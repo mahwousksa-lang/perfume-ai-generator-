@@ -1,7 +1,6 @@
 'use client';
 
 import { Download, Expand, Smartphone, Square, Monitor } from 'lucide-react';
-import Image from 'next/image';
 import type { GeneratedImage } from '@/lib/types';
 
 interface OutputGridProps {
@@ -22,20 +21,9 @@ const FORMAT_ASPECT: Record<string, string> = {
 };
 
 export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
-  const handleDownload = async (url: string, format: string) => {
-    try {
-      const response = await fetch(url);
-      const blob = await response.blob();
-      const blobUrl = URL.createObjectURL(blob);
-      const a = document.createElement('a');
-      a.href = blobUrl;
-      a.download = `${perfumeName.replace(/\s/g, '-')}-${format}-campaign.webp`;
-      a.click();
-      URL.revokeObjectURL(blobUrl);
-    } catch {
-      // Fallback: open in new tab
-      window.open(url, '_blank');
-    }
+  // دالة تحميل آمنة تمنع انهيار المتصفح (Application Error)
+  const handleDownloadSafe = (url: string) => {
+    window.open(url, '_blank');
   };
 
   return (
@@ -55,38 +43,27 @@ export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
               className="output-card animate-fade-in-up"
               style={{ animationDelay: `${i * 120}ms` }}
             >
-              {/* Image */}
-              <div className={`relative w-full ${FORMAT_ASPECT[img.format]} bg-[var(--obsidian)]`}>
-                <Image
+              <div className={`relative w-full ${FORMAT_ASPECT[img.format]} bg-[var(--obsidian)] overflow-hidden rounded-t-xl`}>
+                {/* استخدام img بدلاً من next/image لمنع أخطاء النطاقات */}
+                <img
                   src={img.url}
                   alt={`${img.label} campaign image`}
-                  fill
-                  className="object-cover"
-                  sizes="(max-width: 768px) 100vw, 33vw"
-                  unoptimized
+                  className="object-cover w-full h-full"
+                  crossOrigin="anonymous"
                 />
 
-                {/* Hover overlay */}
-                <div className="overlay gap-2">
+                <div className="overlay gap-2 absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                   <button
-                    onClick={() => window.open(img.url, '_blank')}
-                    className="btn-ghost flex items-center gap-1.5 text-xs px-3 py-2"
-                  >
-                    <Expand size={12} />
-                    عرض
-                  </button>
-                  <button
-                    onClick={() => handleDownload(img.url, img.format)}
+                    onClick={() => handleDownloadSafe(img.url)}
                     className="btn-gold flex items-center gap-1.5 text-xs px-3 py-2 rounded-lg"
                   >
                     <Download size={12} />
-                    تحميل
+                    حفظ / عرض
                   </button>
                 </div>
               </div>
 
-              {/* Label */}
-              <div className="px-4 py-3 flex items-center justify-between">
+              <div className="px-4 py-3 flex items-center justify-between border-t border-[var(--obsidian-border)]">
                 <div className="flex items-center gap-2">
                   <Icon size={13} className="text-[var(--gold)]" />
                   <span className="text-xs text-[var(--text-secondary)]">{img.label}</span>
@@ -98,17 +75,6 @@ export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
             </div>
           );
         })}
-      </div>
-
-      {/* Download all */}
-      <div className="flex justify-center pt-2">
-        <button
-          onClick={() => images.forEach((img) => handleDownload(img.url, img.format))}
-          className="btn-ghost flex items-center gap-2 px-6 py-3 text-sm"
-        >
-          <Download size={14} />
-          تحميل جميع الصور (3 صيغ)
-        </button>
       </div>
     </div>
   );
