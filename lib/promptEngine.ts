@@ -1,5 +1,5 @@
 // ============================================================
-// lib/promptEngine.ts
+// lib/promptEngine.ts  (SERVER-SIDE ONLY)
 // Dynamically constructs optimized AI prompts for each generation.
 //
 // KEY TECHNIQUE: The hand-bottle interaction is solved by:
@@ -9,16 +9,19 @@
 // 3. Using the LoRA trigger word first (highest attention weight)
 // 4. Describing the scene in layers: character → environment →
 //    interaction → lighting → quality
+//
+// ⚠️ البيانات الثابتة موجودة في lib/vibeOptions.ts (Client-safe)
+//    هذا الملف يستورد منها ويُعيد تصديرها للتوافق مع الكود القديم.
 // ============================================================
 
-import { GenerationRequest } from './types';
+import type { GenerationRequest } from './types';
 import { VIBE_MAP, ATTIRE_MAP } from './vibeOptions';
 
-// أعد تصدير الأنواع والخرائط للاستخدام في الخادم
+// إعادة تصدير كل شيء من vibeOptions حتى يبقى أي import قديم يعمل
 export type { VibeData, AttireData } from './vibeOptions';
 export { VIBE_MAP, ATTIRE_MAP, getVibeOptions, getAttireOptions } from './vibeOptions';
 
-// ─── Main Prompt Builder ─────────────────────────────────────────────────────────
+// ─── Main Prompt Builder ──────────────────────────────────────────────────────
 
 /**
  * Builds the optimized positive prompt.
@@ -50,31 +53,14 @@ export function buildPrompt(request: GenerationRequest): string {
     : `the ${perfumeData.name} by ${perfumeData.brand} perfume bottle`;
 
   return [
-    // 1. LoRA trigger (highest attention)
     `${triggerPrefix}`,
-
-    // 2. Subject definition
     `3D CGI photorealistic render of a single confident Arab man in his mid-30s, strong defined masculine facial features, well-groomed short dark beard with clean edges, warm olive skin tone with realistic subsurface scattering,`,
-
-    // 3. Attire
     `wearing ${attireDesc},`,
-
-    // 4. Environment
     `${vibeDesc},`,
-
-    // 5. Lighting
     `${vibeLighting},`,
-
-    // 6. CRITICAL — Hand-bottle interaction (anatomically precise)
     `He holds ${bottleRef} in his right hand using a natural relaxed power grip: thumb resting flat against the side panel, index through pinky fingers wrapped snugly around the lower two-thirds of the bottle, wrist tilted at 15 degrees toward camera so the front label is fully visible and legible, arm slightly bent at the elbow, bottle held at chest-to-waist height,`,
-
-    // 7. Bottle rendering quality
     `perfectly rendered bottle with accurate glass refractions and transparency, crisp label with all text legible, correct proportions matching the reference, no label distortion,`,
-
-    // 8. Pose & character mood
     `character posture is ${vibeMood}, weight shifted to one hip, subtle confident smile, gaze directed at camera,`,
-
-    // 9. Technical quality
     `hyper-realistic Octane render, ultra-detailed surface textures, 8K resolution, cinematic shallow depth of field with focus plane spanning both face and bottle, professional commercial photography lighting, award-winning CGI advertisement, film grain, global illumination, ray-traced reflections.`,
   ]
     .join(' ')
