@@ -7,7 +7,9 @@ const nextConfig = {
       { protocol: 'https', hostname: '**.replicate.com' },
       { protocol: 'https', hostname: '**.mahwous.com' },
       { protocol: 'https', hostname: '**.cdn.shopify.com' },
-      { protocol: 'https', hostname: '**' },
+      { protocol: 'https', hostname: 'v3.fal.media' },
+      { protocol: 'https', hostname: 'v3b.fal.media' },
+      { protocol: 'https', hostname: 'fal.media' }
     ],
   },
   experimental: {
