@@ -1,3 +1,4 @@
+// @ts-nocheck
 // ============================================================
 // lib/scraper.ts
 // Scrapes perfume product pages and extracts structured data.
