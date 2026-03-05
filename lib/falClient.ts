@@ -15,7 +15,7 @@
 //
 // FAL.AI FLUX-LoRA INPUT CONTRACT:
 //   prompt          - string (trigger_word MUST be first)
-//   loras           - [{ path: <URL to .safetensors>, scale: 1.0 }]
+//   loras           - [{ path: <URL to .safetensors>, scale: 0.85 }]
 //   image_size      - { width, height } or preset string
 //   num_inference_steps - 28
 //   guidance_scale  - 3.5
@@ -165,19 +165,14 @@ async function generateSingleFormat(
   };
 
   // ── Attach LoRA weights (face consistency) ──────────────────────────────────
-  // loraPath must be a direct URL to the .safetensors file, e.g.:
-  // https://huggingface.co/user/model/resolve/main/weights.safetensors
-  // OR a fal.ai storage URL from their training pipeline
   if (loraPath?.trim()) {
-    // تم التعديل هنا لنسخ ملامح الشخصية بنسبة 100%
-    input.loras = [{ path: loraPath.trim(), scale: 1.0 }];
+    input.loras = [{ path: loraPath.trim(), scale: 0.90 }];
   }
 
   // ── Attach bottle reference (img2img — product fidelity) ────────────────────
   if (bottleImageBase64?.startsWith('data:image/')) {
     input.image_url = bottleImageBase64;
-    // تم التعديل هنا لنسخ الزجاجة بنسبة 95%
-    input.strength = 0.95;
+    input.strength = 0.35;
   }
 
   const requestId = await submitToQueue(input);
