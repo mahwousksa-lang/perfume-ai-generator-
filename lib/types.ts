@@ -32,11 +32,15 @@ export interface GenerationRequest {
   perfumeData: PerfumeData;
   vibe: string;
   attire: string;
-  loraModelId?: string;
+  // ── Fal.ai LoRA fields ─────────────────────────────────────────────────────
+  /** Direct URL to the LoRA .safetensors weights file on fal.ai or HuggingFace */
+  loraPath?: string;
+  /** Trigger word injected at the START of the prompt — activates the trained face */
   loraTriggerWord?: string;
+  // ── Bottle reference ───────────────────────────────────────────────────────
   /** Base64-encoded bottle reference image (with data:image/... prefix) */
   bottleImageBase64?: string;
-  /** AI-generated description of the bottle for prompt injection */
+  /** Claude/Gemini Vision description of the bottle for prompt injection */
   bottleDescription?: string;
 }
 
