@@ -43,15 +43,17 @@ export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
               className="output-card animate-fade-in-up"
               style={{ animationDelay: `${i * 120}ms` }}
             >
+              {/* Image */}
               <div className={`relative w-full ${FORMAT_ASPECT[img.format]} bg-[var(--obsidian)] overflow-hidden rounded-t-xl`}>
                 {/* استخدام img بدلاً من next/image لمنع أخطاء النطاقات */}
                 <img
                   src={img.url}
                   alt={`${img.label} campaign image`}
-                  className="object-cover w-full h-full"
+                  className="object-cover w-full h-full absolute inset-0"
                   crossOrigin="anonymous"
                 />
 
+                {/* Hover overlay */}
                 <div className="overlay gap-2 absolute inset-0 bg-black/50 flex items-center justify-center opacity-0 hover:opacity-100 transition-opacity">
                   <button
                     onClick={() => handleDownloadSafe(img.url)}
@@ -63,7 +65,8 @@ export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
                 </div>
               </div>
 
-              <div className="px-4 py-3 flex items-center justify-between border-t border-[var(--obsidian-border)]">
+              {/* Label */}
+              <div className="px-4 py-3 flex items-center justify-between border-t border-[var(--obsidian-border)] bg-[var(--obsidian-card)]">
                 <div className="flex items-center gap-2">
                   <Icon size={13} className="text-[var(--gold)]" />
                   <span className="text-xs text-[var(--text-secondary)]">{img.label}</span>
@@ -75,6 +78,17 @@ export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
             </div>
           );
         })}
+      </div>
+
+      {/* Download all */}
+      <div className="flex justify-center pt-2">
+        <button
+          onClick={() => images.forEach((img) => handleDownloadSafe(img.url))}
+          className="btn-ghost flex items-center gap-2 px-6 py-3 text-sm"
+        >
+          <Download size={14} />
+          عرض وحفظ جميع الصور (3 صيغ)
+        </button>
       </div>
     </div>
   );
