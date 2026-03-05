@@ -1,6 +1,6 @@
 'use client';
 
-import { getVibeOptions, getAttireOptions } from '@/lib/promptEngine';
+import { getVibeOptions, getAttireOptions } from '@/lib/vibeOptions';
 import { Palette, Shirt } from 'lucide-react';
 
 interface VibeAttireSelectorProps {
