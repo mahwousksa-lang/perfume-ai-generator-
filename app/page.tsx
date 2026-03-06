@@ -157,6 +157,23 @@ export default function HomePage() {
 
       // Step 2: Generate images
       setLoadingStatus('جاري توليد الصور الاحترافية...');
+
+      // Convert bottle image to base64 for img2img reference
+      let bottleImageBase64: string | undefined;
+      if (product.imageUrl) {
+        try {
+          const imgRes = await fetch('/api/proxy-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ url: product.imageUrl }),
+          });
+          if (imgRes.ok) {
+            const imgData = await imgRes.json();
+            bottleImageBase64 = imgData.base64;
+          }
+        } catch { /* ignore, proceed without bottle reference */ }
+      }
+
       const genRes = await fetch('/api/generate', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -164,6 +181,8 @@ export default function HomePage() {
           perfumeData: product,
           vibe: scrapeData.recommendation.vibe,
           attire: scrapeData.recommendation.attire,
+          loraPath: 'https://v3b.fal.media/files/b/0a90eba7/OiQI7NS6N3neTl50fJHcC_pytorch_lora_weights.safetensors',
+          bottleImageBase64,
         }),
       });
       if (!genRes.ok) {

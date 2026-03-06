@@ -6,7 +6,7 @@
 import type { GenerationRequest } from './types';
 
 // ─── MAHWOUS CHARACTER (ثابت في كل صورة) ────────────────────────────────────
-const CHARACTER_BASE = `3D Pixar Disney CGI animated character, the official Mahwous mascot, large rounded cartoon head with smooth olive skin, thick straight black eyebrows, big warm expressive brown eyes, neat full black beard covering chin and cheeks, black hair neatly swept back, crisp white Saudi thobe with a stylish grey vest sadiri waistcoat, sitting relaxed and confident in a luxurious golden armchair`;
+const CHARACTER_BASE = `MAHWOUS_MAN, 3D Pixar-style CGI animated character, large rounded cartoon head, smooth olive-tan skin, thick black straight eyebrows, big warm expressive dark brown eyes, full neat black beard covering chin and cheeks, black hair swept back, wearing crisp white Saudi thobe with grey sadiri vest waistcoat, sitting relaxed and confident in a luxurious golden velvet armchair, cartoon stylized proportions, Pixar Disney CGI render quality`;
 
 // ─── BOTTLE DESCRIPTIONS ─────────────────────────────────────────────────────
 function getBottleDescription(name: string, brand: string): string {
@@ -22,6 +22,10 @@ function getBottleDescription(name: string, brand: string): string {
 
   if (lower.includes('bvlgari') || lower.includes('bulgari') || lower.includes('بولغاري')) {
     return `holding up a PHOTOREALISTIC Bvlgari perfume bottle, sleek modern glass bottle with silver metallic accents, BVLGARI logo engraved on the front, premium luxury packaging with clean geometric lines, realistic glass transparency and reflections`;
+  }
+
+  if (lower.includes('lattafa') || lower.includes('لطافة')) {
+    return `holding up a PHOTOREALISTIC Lattafa perfume bottle, elegant dark glass bottle with ornate golden Arabic calligraphy label, heavy crystal-cut base, golden metallic domed cap, warm amber liquid visible through the glass, premium Middle Eastern luxury packaging, LATTAFA brand name clearly visible`;
   }
 
   if (lower.includes('oud') || lower.includes('عود') || lower.includes('bois')) {
@@ -108,11 +112,7 @@ export function buildPrompt(request: GenerationRequest): string {
   const sceneDesc = getSceneDescription(notes);
   const scentEffects = getScentEffects(notes);
 
-  // Trigger word first (for LoRA consistency)
-  const triggerWord = (process.env.NEXT_PUBLIC_DEFAULT_LORA_TRIGGER || '').trim();
-
   const parts = [
-    triggerWord,
     CHARACTER_BASE,
     bottleDesc,
     `Background: ${sceneDesc}`,
