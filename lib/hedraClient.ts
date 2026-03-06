@@ -1,11 +1,12 @@
 // ============================================================
 // lib/hedraClient.ts
 // Client for interacting with the Hedra API to generate videos.
-// Uses the verified API endpoints and parameters.
 //
-// FIX v2: Upload image as Hedra asset first, then use
-//   start_keyframe_id instead of start_keyframe_url to avoid
-//   the 2083-character URL limit.
+// FIX v3: Correct request structure based on official Hedra starter:
+//   - generated_video_inputs has NO ai_model_id (it's at root level)
+//   - audio_generation has NO model_id (just type, voice_id, text)
+//   - Use start_keyframe_id (uploaded asset) instead of URL
+//   - Default model: d1dd37a3-e39a-4854-a298-6510289f9cf2 (Hedra Avatar)
 // ============================================================
 
 const HEDRA_API_KEY = process.env.HEDRA_API_KEY;
@@ -15,50 +16,33 @@ const HEDRA_BASE_URL = "https://api.hedra.com/web-app/public";
 export const ARABIC_VOICE_ID = "61d27b32-834c-4797-b9ff-4b0febed07f6"; // Omar (عمر)
 
 // ── Video Models ────────────────────────────────────────────────────────────
-// Hedra Avatar: Cinematic audio-driven characters with full-body acting
+// Official default model from hedra-api-starter (hardcoded in their example)
+export const HEDRA_DEFAULT_MODEL = "d1dd37a3-e39a-4854-a298-6510289f9cf2";
+// Hedra Avatar model
 export const HEDRA_AVATAR_MODEL = "26f0fc66-152b-40ab-abed-76c43df99bc8";
-// Kling V3 Standard I2V: Image-to-video with start frame
-export const KLING_V3_I2V_MODEL = "2eb5fa4c-306e-45f8-99e4-2927ec0429a0";
 
 // ── Types ───────────────────────────────────────────────────────────────────
 
 export type VideoAspectRatio = "9:16" | "16:9" | "1:1";
 
-export interface HedraGenerationRequest {
-  type: "video";
-  ai_model_id: string;
-  generated_video_inputs: {
-    text_prompt: string;
-    aspect_ratio: VideoAspectRatio;
-    duration_ms?: number;
-    enhance_prompt?: boolean;
-  };
-  start_keyframe_id?: string;
-  start_keyframe_url?: string;
-  audio_generation?: {
-    type: "text_to_speech";
-    voice_id: string;
-    text: string;
-    language?: string;
-  };
-}
-
 export interface HedraGenerationResponse {
   id: string;
-  status: "pending" | "processing" | "complete" | "failed";
+  status: "pending" | "processing" | "complete" | "failed" | "error";
   asset_id?: string;
   progress?: number;
   eta_sec?: number;
   error?: string;
+  url?: string;
 }
 
 export interface HedraStatusResponse {
   id: string;
-  status: "pending" | "processing" | "complete" | "failed";
+  status: "pending" | "processing" | "complete" | "failed" | "error";
   asset_id?: string;
   progress?: number;
   eta_sec?: number;
   error?: string;
+  url?: string;
 }
 
 export interface HedraAsset {
@@ -97,8 +81,8 @@ function getApiKeyHeader(): Record<string, string> {
 }
 
 // ── Upload Image to Hedra as Asset ─────────────────────────────────────────
-// This solves the URL-too-long error (max 2083 chars) by uploading the image
-// directly to Hedra and using start_keyframe_id instead of start_keyframe_url.
+// Converts base64 data URLs or long URLs into a Hedra asset ID
+// to avoid the 2083-character URL limit on start_keyframe_url.
 
 async function fetchImageBuffer(imageUrl: string): Promise<Buffer> {
   // Handle base64 data URLs
@@ -119,8 +103,7 @@ async function fetchImageBuffer(imageUrl: string): Promise<Buffer> {
 }
 
 export async function uploadImageToHedra(imageUrl: string): Promise<string> {
-  console.log(`[Hedra] Uploading image to Hedra assets...`);
-  console.log(`[Hedra] Image URL length: ${imageUrl.length} chars`);
+  console.log(`[Hedra] Uploading image as asset (URL length: ${imageUrl.length})`);
 
   // Step 1: Create asset placeholder
   const createResponse = await fetch(`${HEDRA_BASE_URL}/assets`, {
@@ -145,8 +128,7 @@ export async function uploadImageToHedra(imageUrl: string): Promise<string> {
   const imageBuffer = await fetchImageBuffer(imageUrl);
   console.log(`[Hedra] Image buffer size: ${imageBuffer.length} bytes`);
 
-  // Step 3: Upload the image file to the asset using multipart/form-data
-  // We need to construct a multipart form manually since we're in Node.js
+  // Step 3: Upload the image file using multipart/form-data
   const boundary = `----HedraUpload${Date.now()}`;
   const fileName = `perfume_keyframe_${Date.now()}.jpg`;
 
@@ -172,14 +154,28 @@ export async function uploadImageToHedra(imageUrl: string): Promise<string> {
     throw new Error(`Hedra upload asset failed: ${uploadResponse.status} — ${errText}`);
   }
 
-  const uploadData = await uploadResponse.json();
   console.log(`[Hedra] Image uploaded successfully. Asset ID: ${assetId}`);
-  console.log(`[Hedra] Asset URL: ${uploadData?.asset?.url?.substring(0, 80) ?? "N/A"}...`);
-
   return assetId;
 }
 
 // ── Create Video Generation ─────────────────────────────────────────────────
+// Based on official hedra-api-starter structure:
+// {
+//   type: "video",
+//   ai_model_id: "...",           ← at ROOT level
+//   start_keyframe_id: "...",     ← uploaded asset ID
+//   generated_video_inputs: {    ← NO ai_model_id here
+//     text_prompt: "...",
+//     resolution: "720p",
+//     aspect_ratio: "9:16",
+//     duration_ms: 10000,
+//   },
+//   audio_generation: {          ← NO model_id here
+//     type: "text_to_speech",
+//     voice_id: "...",
+//     text: "...",
+//   }
+// }
 
 export async function createHedraVideo(params: {
   imageUrl: string;
@@ -190,27 +186,17 @@ export async function createHedraVideo(params: {
 }): Promise<HedraGenerationResponse> {
   const { imageUrl, textPrompt, voiceoverText, aspectRatio, durationMs = 10000 } = params;
 
-  // Determine whether to use asset upload or direct URL
-  const isLongUrl = imageUrl.length > 2000 || imageUrl.startsWith("data:");
+  // Always upload image as asset (handles both base64 and long URLs)
+  const startKeyframeId = await uploadImageToHedra(imageUrl);
 
-  let startKeyframeId: string | undefined;
-  let startKeyframeUrl: string | undefined;
-
-  if (isLongUrl) {
-    // Upload image to Hedra first, then use asset ID
-    console.log(`[Hedra] URL too long (${imageUrl.length} chars) — uploading as asset`);
-    startKeyframeId = await uploadImageToHedra(imageUrl);
-  } else {
-    // Use direct URL (short enough)
-    startKeyframeUrl = imageUrl;
-  }
-
-  // Build request body
-  const body: HedraGenerationRequest = {
+  // Build request body — EXACT structure from official hedra-api-starter
+  const body: Record<string, unknown> = {
     type: "video",
-    ai_model_id: HEDRA_AVATAR_MODEL,
+    ai_model_id: HEDRA_AVATAR_MODEL,  // at root level
+    start_keyframe_id: startKeyframeId,
     generated_video_inputs: {
       text_prompt: textPrompt,
+      resolution: "720p",
       aspect_ratio: aspectRatio,
       duration_ms: durationMs,
       enhance_prompt: false,
@@ -223,16 +209,10 @@ export async function createHedraVideo(params: {
     },
   };
 
-  // Set the keyframe source
-  if (startKeyframeId) {
-    body.start_keyframe_id = startKeyframeId;
-    console.log(`[Hedra] Using start_keyframe_id: ${startKeyframeId}`);
-  } else if (startKeyframeUrl) {
-    body.start_keyframe_url = startKeyframeUrl;
-    console.log(`[Hedra] Using start_keyframe_url: ${startKeyframeUrl.substring(0, 80)}...`);
-  }
-
-  console.log(`[Hedra] Creating ${aspectRatio} video with model ${HEDRA_AVATAR_MODEL}`);
+  console.log(`[Hedra] Creating ${aspectRatio} video`);
+  console.log(`[Hedra] Model: ${HEDRA_AVATAR_MODEL}`);
+  console.log(`[Hedra] Keyframe ID: ${startKeyframeId}`);
+  console.log(`[Hedra] Voice ID: ${ARABIC_VOICE_ID}`);
   console.log(`[Hedra] Voiceover: ${voiceoverText.substring(0, 60)}...`);
 
   const response = await fetch(`${HEDRA_BASE_URL}/generations`, {
@@ -255,8 +235,8 @@ export async function createHedraVideo(params: {
 // ── Check Video Status ──────────────────────────────────────────────────────
 
 export async function getHedraVideoStatus(generationId: string): Promise<HedraStatusResponse> {
-  const response = await fetch(`${HEDRA_BASE_URL}/generations/${generationId}`, {
-    headers: getHeaders(),
+  const response = await fetch(`${HEDRA_BASE_URL}/generations/${generationId}/status`, {
+    headers: getApiKeyHeader(),
   });
 
   if (!response.ok) {
@@ -271,7 +251,7 @@ export async function getHedraVideoStatus(generationId: string): Promise<HedraSt
 
 export async function getHedraAsset(assetId: string): Promise<HedraAsset> {
   const response = await fetch(`${HEDRA_BASE_URL}/assets/${assetId}`, {
-    headers: getHeaders(),
+    headers: getApiKeyHeader(),
   });
 
   if (!response.ok) {

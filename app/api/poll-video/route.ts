@@ -39,27 +39,26 @@ export async function POST(request: NextRequest) {
         try {
           const status = await getHedraVideoStatus(video.id);
 
-          if (status.status === 'complete' && status.asset_id) {
-            // Try to get the asset download URL
-            try {
-              const asset = await getHedraAsset(status.asset_id);
-              const videoUrl = asset.url || asset.download_url || null;
-              return {
-                ...video,
-                status: 'complete',
-                videoUrl,
-                progress: 100,
-              };
-            } catch {
-              // If asset fetch fails, return the generation status anyway
-              return {
-                ...video,
-                status: 'complete',
-                videoUrl: null,
-                progress: 100,
-                error: 'Asset URL not available yet',
-              };
+          if (status.status === 'complete') {
+            // Try to get video URL from status response directly, then from asset
+            let videoUrl: string | null = status.url || null;
+
+            if (!videoUrl && status.asset_id) {
+              try {
+                const asset = await getHedraAsset(status.asset_id);
+                videoUrl = asset.url || asset.download_url ||
+                  asset.asset?.url || null;
+              } catch {
+                // Asset fetch failed, continue without URL
+              }
             }
+
+            return {
+              ...video,
+              status: 'complete',
+              videoUrl,
+              progress: 100,
+            };
           }
 
           if (status.status === 'failed') {
