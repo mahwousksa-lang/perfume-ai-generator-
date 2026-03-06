@@ -11,7 +11,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { createHedraVideo, type VideoAspectRatio } from '@/lib/hedraClient';
 import type { PerfumeData } from '@/lib/types';
 
-export const maxDuration = 30;
+export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
 
 interface VideoGenerationRequest {
