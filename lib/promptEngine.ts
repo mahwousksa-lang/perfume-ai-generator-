@@ -1,13 +1,13 @@
 // ============================================================
 // lib/promptEngine.ts — SERVER-SIDE ONLY — SELF-CONTAINED
 // ============================================================
-// STYLE: Hyper-realistic Pixar/Disney 3D CGI — Ultra High Quality
-// CHARACTER: Mahwous mascot — Arab man, neat beard, brown eyes
+// STYLE: Official Mahwous 3D Mascot (Pixar/Disney CGI)
+// CHARACTER: Mahwous mascot — Arab man, neat beard, big brown eyes
 //
 // ✅ لا imports خارجية عدا type — مستقل 100% من webpack bundling issues
 // ✅ trigger_word أول token دائماً لأعلى LoRA attention weight
 // ✅ VIBE_MAP + ATTIRE_MAP مضمّنة محلياً
-// ✅ محسّن لتوليد صور بجودة تضاهي النماذج الاحترافية
+// ✅ محسن لضمان ثبات الشخصية الكرتونية 100%
 // ============================================================
 
 import type { GenerationRequest } from './types';
@@ -96,46 +96,47 @@ const VIBE_MAP: Record<string, {
 const ATTIRE_MAP: Record<string, { description: string }> = {
   black_suit_gold_details: {
     description:
-      'impeccably tailored modern black suit with subtle gold embroidery on the lapels, crisp white shirt, and a shining gold tie with a gold pocket square',
+      'wearing an impeccably tailored modern black suit with subtle gold embroidery on the lapels, crisp white shirt, and a shining gold tie with a gold pocket square',
   },
   saudi_bisht: {
     description:
-      'traditional Saudi white thobe and a luxurious black bisht with wide gold trim, embodying Arabian heritage and elegance',
+      'wearing a traditional Saudi white thobe and a luxurious black bisht with wide gold trim, embodying Arabian heritage and elegance',
   },
   white_thobe_black_bisht: {
     description:
-      'pristine snow-white Saudi thobe with fine gold embroidery at collar and cuffs, sweeping jet-black bisht cloak edged with thick gold trim, traditional white ghutrah headdress with black agal crown',
+      'wearing a pristine snow-white Saudi thobe with fine gold embroidery at collar and cuffs, sweeping jet-black bisht cloak edged with thick gold trim, traditional white ghutrah headdress with black agal crown',
   },
   charcoal_suit_gold_tie: {
     description:
-      'perfectly tailored charcoal grey double-breasted suit, crisp white French-cuff dress shirt, lustrous gold silk tie with confident half-Windsor knot, matching gold pocket square',
+      'wearing a perfectly tailored charcoal grey double-breasted suit, crisp white French-cuff dress shirt, lustrous gold silk tie with confident half-Windsor knot, matching gold pocket square',
   },
   white_thobe_only: {
     description:
-      'immaculate crisp white thobe with subtle silver geometric embroidery at collar, no headdress, neat well-groomed short dark hairstyle, relaxed yet dignified',
+      'wearing an immaculate crisp white thobe with subtle silver geometric embroidery at collar, no headdress, neat well-groomed short dark hairstyle, relaxed yet dignified',
   },
   navy_suit: {
     description:
-      'sharp midnight navy slim-fit suit with peak lapels, bright white dress shirt with gold cufflinks, brushed silver tie, minimal but expensive-looking accessories',
+      'wearing a sharp midnight navy slim-fit suit with peak lapels, bright white dress shirt with gold cufflinks, brushed silver tie, minimal but expensive-looking accessories',
   },
   beige_thobe_brown_bisht: {
     description:
-      'warm camel-beige thobe with brown arabesque embroidery, rich chocolate-brown bisht trimmed with wide gold metallic band, matching cream-toned ghutrah',
+      'wearing a warm camel-beige thobe with brown arabesque embroidery, rich chocolate-brown bisht trimmed with wide gold metallic band, matching cream-toned ghutrah',
   },
 };
 
 // ─── buildPrompt ─────────────────────────────────────────────────────────────
 //
-// STYLE: Hyper-realistic Pixar/Disney 3D CGI — Ultra High Quality
+// STYLE: Official Mahwous 3D Mascot (Pixar/Disney CGI)
 //
 // Character reference (Mahwous mascot):
-//   • Handsome Arab man, early 30s
-//   • Perfectly groomed black hair swept back stylishly
-//   • Neat, well-defined black beard
-//   • Expressive warm brown eyes
-//   • Smooth olive-tan skin with realistic 3D texture
-//   • Slightly stylized Pixar-proportioned features
-//   • Warm friendly confident expression
+//   • 3D cartoon Arab man, early 30s
+//   • Large rounded head, Pixar proportions
+//   • Smooth olive-cream skin
+//   • Thick straight black eyebrows
+//   • Big, warm, expressive brown eyes
+//   • Neat trimmed black goatee beard
+//   • Black hair swept back and to the side
+//   • Black suit with gold embroidery, gold tie
 //
 // HAND-BOTTLE TECHNIQUE:
 //   • Right hand natural grip at chest height
@@ -169,14 +170,14 @@ export function buildPrompt(request: GenerationRequest): string {
     // 1. LoRA trigger (mandatory first position)
     triggerPrefix,
 
-    // 2. Style declaration — Hyper-realistic Pixar/Disney 3D CGI
-    'hyper-detailed 3D animation render, Pixar Disney CGI style, ultra-realistic 3D character,',
+    // 2. Style declaration — Official Mahwous 3D Mascot
+    'official Mahwous 3D mascot, Pixar/Disney CGI style, 3D cartoon Arab man,',
 
-    // 3. Character — Mahwous mascot (consistent features)
-    'a handsome Arab man in his early 30s, with perfectly groomed black hair swept back stylishly, a neat well-defined black beard, expressive warm brown eyes, smooth olive-tan skin with realistic 3D texture, slightly stylized Pixar-proportioned features, warm friendly confident expression, looking directly at the viewer,',
+    // 3. Character — Mahwous mascot (100% consistent features)
+    'large rounded head with Pixar proportions, smooth olive-cream skin, thick straight black eyebrows, big warm expressive brown eyes, small straight nose, thin mustache line, neat trimmed black goatee beard covering chin and lower cheeks, black hair swept back and to the side with one strand falling on forehead, subtle warm friendly smile, looking directly at the viewer,',
 
     // 4. Attire
-    `wearing ${attireData.description},`,
+    attireData.description,
 
     // 5. Environment
     `${vibeData.description},`,
@@ -185,7 +186,7 @@ export function buildPrompt(request: GenerationRequest): string {
     `${vibeData.lighting},`,
 
     // 7. Hand-bottle interaction (precise for bottle compositing)
-    `elegantly holding the ${bottleRef} in his right hand, presenting it clearly to the viewer with a natural elegant pose. The bottle is rendered with photorealistic glass material, accurate label text clearly visible, beautiful light refractions and reflections, correct proportions matching the real product,`,
+    `elegantly holding the ${bottleRef} in his right hand, presenting it clearly to the viewer with a natural elegant pose. The bottle is rendered with 100% accurate photorealistic glass material, accurate label text clearly visible, beautiful light refractions and reflections, correct proportions matching the real product,`,
 
     // 8. Pose & mood
     `posture is ${vibeData.mood}, weight naturally shifted, genuine confident expression,`,
@@ -205,6 +206,7 @@ export function buildPrompt(request: GenerationRequest): string {
 
 export function buildNegativePrompt(): string {
   return [
+    'photorealistic, realistic, human, photo, photograph, DSLR, camera photo,',
     'ugly, deformed, disfigured, poor quality, blurry, low resolution,',
     'mutated hands, extra fingers, missing fingers, six fingers, fused fingers, wrong hand anatomy,',
     'floating bottle, bottle clipping, obscured label, distorted label, misspelled label,',
