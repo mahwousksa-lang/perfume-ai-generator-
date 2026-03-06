@@ -6,7 +6,7 @@
 import type { GenerationRequest } from './types';
 
 // ─── MAHWOUS CHARACTER (ثابت في كل صورة) ────────────────────────────────────
-const CHARACTER_BASE = `MAHWOUS_MAN, 3D Pixar-style CGI animated character, large rounded cartoon head, smooth olive-tan skin, thick black straight eyebrows, big warm expressive dark brown eyes, full neat black beard covering chin and cheeks, black hair swept back, wearing crisp white Saudi thobe with grey sadiri vest waistcoat, sitting relaxed and confident in a luxurious golden velvet armchair, cartoon stylized proportions, Pixar Disney CGI render quality`;
+const CHARACTER_BASE = `MAHWOUS_MAN, 3D Pixar-style CGI animated character, large rounded cartoon head, smooth olive-tan skin, thick black straight eyebrows, big warm expressive dark brown eyes, full neat black beard covering chin and cheeks, black hair swept back, wearing crisp white Saudi thobe with grey sadiri vest waistcoat, sitting relaxed and confident in a luxurious golden velvet armchair, RIGHT HAND raised and extended forward with open palm facing up as if presenting or holding an object, left hand resting on armchair, cartoon stylized proportions, Pixar Disney CGI render quality`;
 
 // ─── BOTTLE DESCRIPTIONS ─────────────────────────────────────────────────────
 function getBottleDescription(name: string, brand: string): string {
@@ -112,13 +112,14 @@ export function buildPrompt(request: GenerationRequest): string {
   const { perfumeData, vibe = '', attire = '' } = request;
   const { name = '', brand = '', notes } = perfumeData || {};
 
-  const bottleDesc = getBottleDescription(name, brand);
   const sceneDesc = getSceneDescription(notes);
   const scentEffects = getScentEffects(notes);
 
+  // NOTE: Bottle description is intentionally excluded from the prompt.
+  // The real product image will be composited onto the character's hand
+  // programmatically after generation to ensure 100% product accuracy.
   const parts = [
     CHARACTER_BASE,
-    bottleDesc,
     `Background: ${sceneDesc}`,
     `Floating around: ${scentEffects}`,
     `Ultra-realistic 8K 3D render, Octane Render, cinematic lighting, masterpiece, award-winning commercial photography quality, sharp focus, vibrant colors, global illumination, subsurface scattering`,

@@ -190,6 +190,37 @@ export default function HomePage() {
         throw new Error(err.error || 'فشل توليد الصور.');
       }
       const genData: GenerationResult = await genRes.json();
+
+      // Step 2b: Composite real product bottle onto generated images
+      if (product.imageUrl && genData.images && genData.images.length > 0) {
+        setLoadingStatus('جاري دمج صورة المنتج الحقيقية...');
+        try {
+          const compositePromises = genData.images.map(async (img) => {
+            const compRes = await fetch('/api/composite', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                characterImageUrl: img.url,
+                bottleImageUrl: product.imageUrl,
+                format: img.format,
+              }),
+            });
+            if (compRes.ok) {
+              const compData = await compRes.json();
+              if (compData.imageDataUrl) {
+                return { ...img, url: compData.imageDataUrl };
+              }
+            }
+            return img; // fallback to original if composite fails
+          });
+          const compositeImages = await Promise.all(compositePromises);
+          genData.images = compositeImages;
+        } catch {
+          // If composite fails, use original images
+          console.warn('Composite failed, using original images');
+        }
+      }
+
       setGenerationResult(genData);
 
       // Step 3: Generate captions
