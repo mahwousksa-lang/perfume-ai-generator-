@@ -1,8 +1,8 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
-import { ArrowLeft, Loader2, Link2, Sparkles, Video, MessageSquare, Image, Copy, Check, Instagram, Twitter } from 'lucide-react';
+import { ArrowLeft, Loader2, Link2, Sparkles, Video, MessageSquare, Image, Copy, Check, Instagram, Twitter, Upload, X } from 'lucide-react';
 
 import type {
   PerfumeData,
@@ -124,6 +124,45 @@ export default function HomePage() {
   const [activeTab, setActiveTab] = useState<'images' | 'captions' | 'videos'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
 
+  // ── Product reference image upload state ──────────────────────────────────
+  const [bottleImageBase64, setBottleImageBase64] = useState<string>('');
+  const [bottleImagePreview, setBottleImagePreview] = useState<string>('');
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleBottleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // Validate file type
+    if (!file.type.startsWith('image/')) {
+      toast.error('يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP)');
+      return;
+    }
+
+    // Validate file size (max 10MB)
+    if (file.size > 10 * 1024 * 1024) {
+      toast.error('حجم الصورة يجب أن يكون أقل من 10 ميجابايت');
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (event) => {
+      const base64 = event.target?.result as string;
+      setBottleImageBase64(base64);
+      setBottleImagePreview(base64);
+      toast.success('تم رفع صورة المنتج المرجعية بنجاح');
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveBottleImage = () => {
+    setBottleImageBase64('');
+    setBottleImagePreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
+  };
+
   const handleGenerateCampaign = async () => {
     if (!productUrl.trim()) {
       toast.error('الرجاء إدخال رابط المنتج أولاً.');
@@ -155,8 +194,11 @@ export default function HomePage() {
       };
       setPerfumeData(product);
 
-      // Step 2: Generate images via Gemini (direct response, no polling needed)
-      setLoadingStatus('جاري توليد الصور بأسلوب نانو بنانا... (قد يستغرق 1-2 دقيقة)');
+      // Step 2: Generate images — FLUX LoRA + Gemini Nano Banana
+      const pipelineDesc = bottleImageBase64
+        ? 'FLUX LoRA img2img (صورة مرجعية) + Gemini Nano Banana'
+        : 'FLUX LoRA + Gemini Nano Banana';
+      setLoadingStatus(`جاري توليد الصور بأسلوب ${pipelineDesc}... (قد يستغرق 2-3 دقائق)`);
 
       const genRes = await fetch('/api/generate', {
         method: 'POST',
@@ -165,6 +207,8 @@ export default function HomePage() {
           perfumeData: product,
           vibe: scrapeData.recommendation.vibe,
           attire: scrapeData.recommendation.attire,
+          // ── Pass the user-uploaded bottle reference image ──
+          bottleImageBase64: bottleImageBase64 || undefined,
         }),
       });
       if (!genRes.ok) {
@@ -199,7 +243,6 @@ export default function HomePage() {
       } else if (genData.pendingImages) {
         // Fallback: legacy fal.ai polling mode (kept for compatibility)
         let pendingImages = genData.pendingImages;
-        const promptText = genData.prompt;
         const maxPolls = 60;
         let pollCount = 0;
 
@@ -251,7 +294,7 @@ export default function HomePage() {
       setGenerationResult(finalGenData);
 
       // Step 3: Generate captions
-      setLoadingStatus('جاري كتابة الكابشنات الاحترافية...');
+      setLoadingStatus('جاري كتابة الكابشنات...');
       const capRes = await fetch('/api/captions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -300,6 +343,11 @@ export default function HomePage() {
     setScenarios(null);
     setActiveTab('images');
     setLoadingStatus('');
+    setBottleImageBase64('');
+    setBottleImagePreview('');
+    if (fileInputRef.current) {
+      fileInputRef.current.value = '';
+    }
   };
 
   return (
@@ -341,7 +389,8 @@ export default function HomePage() {
               </p>
             </div>
 
-            <div className="w-full max-w-lg space-y-3">
+            <div className="w-full max-w-lg space-y-4">
+              {/* Product URL Input */}
               <div className="relative">
                 <Link2 size={16} className="absolute right-4 top-1/2 -translate-y-1/2 text-[var(--text-muted)]" />
                 <input
@@ -354,19 +403,78 @@ export default function HomePage() {
                   dir="ltr"
                 />
               </div>
+
+              {/* ── Product Reference Image Upload ── */}
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 text-xs text-[var(--text-muted)]">
+                  <Upload size={12} />
+                  <span>صورة المنتج المرجعية (اختياري — لضمان دقة شكل الزجاجة 100%)</span>
+                </div>
+
+                {!bottleImagePreview ? (
+                  <label
+                    className="flex flex-col items-center justify-center w-full h-32 border-2 border-dashed border-[var(--obsidian-border)] rounded-xl cursor-pointer hover:border-[var(--gold)] hover:bg-[var(--obsidian-light)] transition-all group"
+                  >
+                    <div className="flex flex-col items-center gap-2 text-[var(--text-muted)] group-hover:text-[var(--gold)] transition-colors">
+                      <Upload size={24} />
+                      <span className="text-xs">اسحب صورة المنتج هنا أو اضغط للاختيار</span>
+                      <span className="text-[10px] opacity-60">JPG, PNG, WEBP — حتى 10 ميجابايت</span>
+                    </div>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept="image/*"
+                      className="hidden"
+                      onChange={handleBottleImageUpload}
+                    />
+                  </label>
+                ) : (
+                  <div className="relative w-full rounded-xl border border-[var(--gold)] bg-[var(--obsidian-light)] p-3">
+                    <div className="flex items-center gap-4">
+                      <img
+                        src={bottleImagePreview}
+                        alt="صورة المنتج المرجعية"
+                        className="w-20 h-20 object-contain rounded-lg bg-white/5"
+                      />
+                      <div className="flex-1 text-right">
+                        <p className="text-xs text-[var(--gold)] font-medium">صورة المنتج المرجعية</p>
+                        <p className="text-[10px] text-[var(--text-muted)] mt-1">
+                          سيتم استخدام هذه الصورة كمرجع لشكل الزجاجة الحقيقي في الصور المولَّدة
+                        </p>
+                      </div>
+                      <button
+                        onClick={handleRemoveBottleImage}
+                        className="absolute top-2 left-2 w-6 h-6 rounded-full bg-red-500/20 hover:bg-red-500/40 flex items-center justify-center transition-colors"
+                        title="إزالة الصورة"
+                      >
+                        <X size={12} className="text-red-400" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+              </div>
+
+              {/* Generate Button */}
               <button
                 onClick={handleGenerateCampaign}
                 disabled={!productUrl.trim()}
                 className="btn-gold w-full py-3 text-sm flex items-center justify-center gap-2 rounded-xl disabled:opacity-40"
               >
                 <Sparkles size={16} />
-                ابدأ توليد الحملة
+                {bottleImageBase64 ? 'ابدأ التوليد (مع صورة مرجعية)' : 'ابدأ توليد الحملة'}
               </button>
+
+              {/* Indicator for reference image */}
+              {bottleImageBase64 && (
+                <p className="text-[10px] text-[var(--gold)] text-center animate-pulse">
+                  سيتم استخدام الصورة المرجعية لضمان دقة شكل الزجاجة 100%
+                </p>
+              )}
             </div>
 
             {/* Feature pills */}
             <div className="flex flex-wrap justify-center gap-2 text-xs text-[var(--text-muted)]">
-              {['صور 3 أحجام بأسلوب نانو بنانا', 'كابشن انستغرام + تويتر + تيك توك', 'سيناريو فيديو ترند', 'صوت عربي سعودي', 'واتساب تلقائي'].map((f) => (
+              {['صور 3 أحجام بأسلوب نانو بنانا', 'صورة مرجعية للمنتج', 'كابشن انستغرام + تويتر + تيك توك', 'سيناريو فيديو ترند', 'صوت عربي سعودي', 'واتساب تلقائي'].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
                   ✓ {f}
                 </span>
@@ -385,6 +493,11 @@ export default function HomePage() {
             <div className="space-y-2">
               <p className="text-lg font-medium text-[var(--text-primary)]">جاري بناء حملتك...</p>
               <p className="text-sm text-[var(--text-muted)] animate-pulse">{loadingStatus}</p>
+              {bottleImageBase64 && (
+                <p className="text-[10px] text-[var(--gold)]">
+                  يتم استخدام الصورة المرجعية لتوليد الزجاجة بشكلها الحقيقي
+                </p>
+              )}
             </div>
           </div>
         )}
