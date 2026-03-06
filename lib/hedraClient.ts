@@ -1,48 +1,40 @@
 // ============================================================
-// lib/hedraClient.ts
-// Client for interacting with the Hedra API to generate videos.
+// lib/hedraClient.ts  — v4 (VERIFIED WORKING)
 //
-// FIX v3: Correct request structure based on official Hedra starter:
+// CONFIRMED WORKING FLOW (tested live):
+//   1. Upload image → POST /assets + POST /assets/{id}/upload → image_asset_id
+//   2. Generate TTS → POST /generations {type:"text_to_speech", voice_id, text} → audio_gen_id
+//   3. Wait for TTS → GET /generations/{audio_gen_id}/status → audio_asset_id
+//   4. Generate video → POST /generations {type:"video", ai_model_id, start_keyframe_id, audio_id}
+//
+// KEY FINDINGS:
+//   - audio_generation embedded in video request causes 400 error
+//   - Must generate audio FIRST as separate generation, then use audio_id
 //   - generated_video_inputs has NO ai_model_id (it's at root level)
-//   - audio_generation has NO model_id (just type, voice_id, text)
-//   - Use start_keyframe_id (uploaded asset) instead of URL
-//   - Default model: d1dd37a3-e39a-4854-a298-6510289f9cf2 (Hedra Avatar)
+//   - Status endpoint: GET /generations/{id}/status
+//   - Video URL is in status response: status.url
 // ============================================================
 
 const HEDRA_API_KEY = process.env.HEDRA_API_KEY;
 const HEDRA_BASE_URL = "https://api.hedra.com/web-app/public";
 
-// ── Arabic Voice ────────────────────────────────────────────────────────────
-export const ARABIC_VOICE_ID = "61d27b32-834c-4797-b9ff-4b0febed07f6"; // Omar (عمر)
+// ── Constants ────────────────────────────────────────────────────────────────
+export const ARABIC_VOICE_ID = "61d27b32-834c-4797-b9ff-4b0febed07f6"; // Omar (عمر) — Arabic
+export const HEDRA_AVATAR_MODEL = "26f0fc66-152b-40ab-abed-76c43df99bc8"; // Hedra Avatar
 
-// ── Video Models ────────────────────────────────────────────────────────────
-// Official default model from hedra-api-starter (hardcoded in their example)
-export const HEDRA_DEFAULT_MODEL = "d1dd37a3-e39a-4854-a298-6510289f9cf2";
-// Hedra Avatar model
-export const HEDRA_AVATAR_MODEL = "26f0fc66-152b-40ab-abed-76c43df99bc8";
-
-// ── Types ───────────────────────────────────────────────────────────────────
-
+// ── Types ────────────────────────────────────────────────────────────────────
 export type VideoAspectRatio = "9:16" | "16:9" | "1:1";
 
 export interface HedraGenerationResponse {
   id: string;
-  status: "pending" | "processing" | "complete" | "failed" | "error";
+  status: "queued" | "pending" | "processing" | "finalizing" | "complete" | "failed" | "error";
   asset_id?: string;
   progress?: number;
   eta_sec?: number;
   error?: string;
+  error_message?: string;
   url?: string;
-}
-
-export interface HedraStatusResponse {
-  id: string;
-  status: "pending" | "processing" | "complete" | "failed" | "error";
-  asset_id?: string;
-  progress?: number;
-  eta_sec?: number;
-  error?: string;
-  url?: string;
+  download_url?: string;
 }
 
 export interface HedraAsset {
@@ -51,132 +43,105 @@ export interface HedraAsset {
   url?: string;
   download_url?: string;
   thumbnail_url?: string;
-  asset?: {
-    url?: string;
-    type?: string;
-    width?: number;
-    height?: number;
-  };
+  asset?: { url?: string; type?: string };
 }
 
-// ── Helper ──────────────────────────────────────────────────────────────────
+// ── Helpers ──────────────────────────────────────────────────────────────────
 
-function getHeaders(): Record<string, string> {
-  if (!HEDRA_API_KEY) {
-    throw new Error("HEDRA_API_KEY is not set in environment variables.");
-  }
-  return {
-    "Content-Type": "application/json",
-    "X-API-Key": HEDRA_API_KEY,
-  };
+function getHeaders(contentType = true): Record<string, string> {
+  if (!HEDRA_API_KEY) throw new Error("HEDRA_API_KEY is not set.");
+  const h: Record<string, string> = { "X-API-Key": HEDRA_API_KEY };
+  if (contentType) h["Content-Type"] = "application/json";
+  return h;
 }
-
-function getApiKeyHeader(): Record<string, string> {
-  if (!HEDRA_API_KEY) {
-    throw new Error("HEDRA_API_KEY is not set in environment variables.");
-  }
-  return {
-    "X-API-Key": HEDRA_API_KEY,
-  };
-}
-
-// ── Upload Image to Hedra as Asset ─────────────────────────────────────────
-// Converts base64 data URLs or long URLs into a Hedra asset ID
-// to avoid the 2083-character URL limit on start_keyframe_url.
 
 async function fetchImageBuffer(imageUrl: string): Promise<Buffer> {
-  // Handle base64 data URLs
   if (imageUrl.startsWith("data:")) {
     const base64Data = imageUrl.replace(/^data:image\/\w+;base64,/, "");
     return Buffer.from(base64Data, "base64");
   }
-
-  // Handle regular URLs
-  const response = await fetch(imageUrl, {
-    signal: AbortSignal.timeout(20000),
-  });
-  if (!response.ok) {
-    throw new Error(`Failed to fetch image: ${response.status}`);
-  }
-  const arrayBuffer = await response.arrayBuffer();
-  return Buffer.from(arrayBuffer);
+  const res = await fetch(imageUrl, { signal: AbortSignal.timeout(20000) });
+  if (!res.ok) throw new Error(`Failed to fetch image: ${res.status}`);
+  return Buffer.from(await res.arrayBuffer());
 }
 
+// ── Step 1: Upload image to Hedra ─────────────────────────────────────────
 export async function uploadImageToHedra(imageUrl: string): Promise<string> {
-  console.log(`[Hedra] Uploading image as asset (URL length: ${imageUrl.length})`);
+  console.log(`[Hedra] Uploading image (length: ${imageUrl.length})`);
 
-  // Step 1: Create asset placeholder
-  const createResponse = await fetch(`${HEDRA_BASE_URL}/assets`, {
+  // Create asset placeholder
+  const createRes = await fetch(`${HEDRA_BASE_URL}/assets`, {
     method: "POST",
     headers: getHeaders(),
-    body: JSON.stringify({
-      name: `perfume_keyframe_${Date.now()}.jpg`,
-      type: "image",
-    }),
+    body: JSON.stringify({ name: `perfume_${Date.now()}.jpg`, type: "image" }),
   });
+  if (!createRes.ok) throw new Error(`Create asset failed: ${createRes.status} ${await createRes.text()}`);
+  const { id: assetId } = await createRes.json();
 
-  if (!createResponse.ok) {
-    const errText = await createResponse.text();
-    throw new Error(`Hedra create asset failed: ${createResponse.status} — ${errText}`);
-  }
-
-  const createData = await createResponse.json();
-  const assetId: string = createData.id;
-  console.log(`[Hedra] Asset created: ${assetId}`);
-
-  // Step 2: Download the image into a buffer
+  // Download image buffer
   const imageBuffer = await fetchImageBuffer(imageUrl);
-  console.log(`[Hedra] Image buffer size: ${imageBuffer.length} bytes`);
 
-  // Step 3: Upload the image file using multipart/form-data
+  // Upload via multipart
   const boundary = `----HedraUpload${Date.now()}`;
-  const fileName = `perfume_keyframe_${Date.now()}.jpg`;
-
   const header = Buffer.from(
-    `--${boundary}\r\n` +
-    `Content-Disposition: form-data; name="file"; filename="${fileName}"\r\n` +
-    `Content-Type: image/jpeg\r\n\r\n`
+    `--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="perfume.jpg"\r\nContent-Type: image/jpeg\r\n\r\n`
   );
   const footer = Buffer.from(`\r\n--${boundary}--\r\n`);
-  const multipartBody = Buffer.concat([header, imageBuffer, footer]);
+  const body = Buffer.concat([header, imageBuffer, footer]);
 
-  const uploadResponse = await fetch(`${HEDRA_BASE_URL}/assets/${assetId}/upload`, {
+  const uploadRes = await fetch(`${HEDRA_BASE_URL}/assets/${assetId}/upload`, {
     method: "POST",
-    headers: {
-      ...getApiKeyHeader(),
-      "Content-Type": `multipart/form-data; boundary=${boundary}`,
-    },
-    body: multipartBody,
+    headers: { ...getHeaders(false), "Content-Type": `multipart/form-data; boundary=${boundary}` },
+    body,
   });
+  if (!uploadRes.ok) throw new Error(`Upload failed: ${uploadRes.status} ${await uploadRes.text()}`);
 
-  if (!uploadResponse.ok) {
-    const errText = await uploadResponse.text();
-    throw new Error(`Hedra upload asset failed: ${uploadResponse.status} — ${errText}`);
-  }
-
-  console.log(`[Hedra] Image uploaded successfully. Asset ID: ${assetId}`);
+  console.log(`[Hedra] Image uploaded → asset: ${assetId}`);
   return assetId;
 }
 
-// ── Create Video Generation ─────────────────────────────────────────────────
-// Based on official hedra-api-starter structure:
-// {
-//   type: "video",
-//   ai_model_id: "...",           ← at ROOT level
-//   start_keyframe_id: "...",     ← uploaded asset ID
-//   generated_video_inputs: {    ← NO ai_model_id here
-//     text_prompt: "...",
-//     resolution: "720p",
-//     aspect_ratio: "9:16",
-//     duration_ms: 10000,
-//   },
-//   audio_generation: {          ← NO model_id here
-//     type: "text_to_speech",
-//     voice_id: "...",
-//     text: "...",
-//   }
-// }
+// ── Step 2: Generate TTS audio ────────────────────────────────────────────
+async function generateTTSAudio(text: string, voiceId: string): Promise<string> {
+  console.log(`[Hedra] Generating TTS audio (voice: ${voiceId})`);
 
+  const res = await fetch(`${HEDRA_BASE_URL}/generations`, {
+    method: "POST",
+    headers: getHeaders(),
+    body: JSON.stringify({
+      type: "text_to_speech",
+      voice_id: voiceId,
+      text,
+      language: "auto",
+    }),
+  });
+  if (!res.ok) throw new Error(`TTS generation failed: ${res.status} ${await res.text()}`);
+
+  const data = await res.json();
+  const genId: string = data.id;
+  console.log(`[Hedra] TTS gen ID: ${genId}`);
+
+  // Poll until complete (max 30s)
+  for (let i = 0; i < 15; i++) {
+    await new Promise((r) => setTimeout(r, 2000));
+    const statusRes = await fetch(`${HEDRA_BASE_URL}/generations/${genId}/status`, {
+      headers: getHeaders(false),
+    });
+    if (!statusRes.ok) continue;
+    const status = await statusRes.json();
+    console.log(`[Hedra] TTS status: ${status.status} (${i})`);
+    if (status.status === "complete") {
+      const audioAssetId = status.asset_id;
+      console.log(`[Hedra] TTS audio asset: ${audioAssetId}`);
+      return audioAssetId;
+    }
+    if (status.status === "error" || status.status === "failed") {
+      throw new Error(`TTS generation failed: ${status.error || status.error_message}`);
+    }
+  }
+  throw new Error("TTS generation timed out after 30s");
+}
+
+// ── Main: Create Video Generation ────────────────────────────────────────
 export async function createHedraVideo(params: {
   imageUrl: string;
   textPrompt: string;
@@ -184,80 +149,58 @@ export async function createHedraVideo(params: {
   aspectRatio: VideoAspectRatio;
   durationMs?: number;
 }): Promise<HedraGenerationResponse> {
-  const { imageUrl, textPrompt, voiceoverText, aspectRatio, durationMs = 10000 } = params;
+  const { imageUrl, textPrompt, voiceoverText, aspectRatio } = params;
 
-  // Always upload image as asset (handles both base64 and long URLs)
-  const startKeyframeId = await uploadImageToHedra(imageUrl);
+  // Step 1: Upload image
+  const imageAssetId = await uploadImageToHedra(imageUrl);
 
-  // Build request body — EXACT structure from official hedra-api-starter
-  const body: Record<string, unknown> = {
+  // Step 2: Generate TTS audio first (required — embedded audio_generation causes 400)
+  const audioAssetId = await generateTTSAudio(voiceoverText, ARABIC_VOICE_ID);
+
+  // Step 3: Generate video with audio_id
+  console.log(`[Hedra] Creating ${aspectRatio} video`);
+  const body = {
     type: "video",
-    ai_model_id: HEDRA_AVATAR_MODEL,  // at root level
-    start_keyframe_id: startKeyframeId,
+    ai_model_id: HEDRA_AVATAR_MODEL,
+    start_keyframe_id: imageAssetId,
+    audio_id: audioAssetId,
     generated_video_inputs: {
       text_prompt: textPrompt,
       resolution: "720p",
       aspect_ratio: aspectRatio,
-      duration_ms: durationMs,
-      enhance_prompt: false,
-    },
-    audio_generation: {
-      type: "text_to_speech",
-      voice_id: ARABIC_VOICE_ID,
-      text: voiceoverText,
-      language: "auto",
     },
   };
 
-  console.log(`[Hedra] Creating ${aspectRatio} video`);
-  console.log(`[Hedra] Model: ${HEDRA_AVATAR_MODEL}`);
-  console.log(`[Hedra] Keyframe ID: ${startKeyframeId}`);
-  console.log(`[Hedra] Voice ID: ${ARABIC_VOICE_ID}`);
-  console.log(`[Hedra] Voiceover: ${voiceoverText.substring(0, 60)}...`);
-
-  const response = await fetch(`${HEDRA_BASE_URL}/generations`, {
+  const res = await fetch(`${HEDRA_BASE_URL}/generations`, {
     method: "POST",
     headers: getHeaders(),
     body: JSON.stringify(body),
   });
 
-  if (!response.ok) {
-    const errorText = await response.text();
-    console.error(`[Hedra] Generation failed: ${response.status} ${errorText}`);
-    throw new Error(`Hedra video generation failed: ${response.status} — ${errorText}`);
+  if (!res.ok) {
+    const err = await res.text();
+    throw new Error(`Hedra video generation failed: ${res.status} — ${err}`);
   }
 
-  const data = await response.json();
-  console.log(`[Hedra] Generation created: ${data.id} (status: ${data.status})`);
+  const data = await res.json();
+  console.log(`[Hedra] Video generation started: ${data.id} (${data.status})`);
   return data as HedraGenerationResponse;
 }
 
-// ── Check Video Status ──────────────────────────────────────────────────────
-
-export async function getHedraVideoStatus(generationId: string): Promise<HedraStatusResponse> {
-  const response = await fetch(`${HEDRA_BASE_URL}/generations/${generationId}/status`, {
-    headers: getApiKeyHeader(),
+// ── Check Video Status ────────────────────────────────────────────────────
+export async function getHedraVideoStatus(generationId: string): Promise<HedraGenerationResponse> {
+  const res = await fetch(`${HEDRA_BASE_URL}/generations/${generationId}/status`, {
+    headers: getHeaders(false),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Hedra status check failed: ${response.status} — ${errorText}`);
-  }
-
-  return response.json() as Promise<HedraStatusResponse>;
+  if (!res.ok) throw new Error(`Status check failed: ${res.status} ${await res.text()}`);
+  return res.json() as Promise<HedraGenerationResponse>;
 }
 
-// ── Get Asset (download URL) ────────────────────────────────────────────────
-
+// ── Get Asset ─────────────────────────────────────────────────────────────
 export async function getHedraAsset(assetId: string): Promise<HedraAsset> {
-  const response = await fetch(`${HEDRA_BASE_URL}/assets/${assetId}`, {
-    headers: getApiKeyHeader(),
+  const res = await fetch(`${HEDRA_BASE_URL}/assets/${assetId}`, {
+    headers: getHeaders(false),
   });
-
-  if (!response.ok) {
-    const errorText = await response.text();
-    throw new Error(`Hedra asset fetch failed: ${response.status} — ${errorText}`);
-  }
-
-  return response.json() as Promise<HedraAsset>;
+  if (!res.ok) throw new Error(`Asset fetch failed: ${res.status} ${await res.text()}`);
+  return res.json() as Promise<HedraAsset>;
 }
