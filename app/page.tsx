@@ -155,8 +155,8 @@ export default function HomePage() {
       };
       setPerfumeData(product);
 
-      // Step 2: Submit image generation to fal.ai queue (returns immediately with request IDs)
-      setLoadingStatus('جاري إرسال طلب التوليد...');
+      // Step 2: Generate images via Gemini (direct response, no polling needed)
+      setLoadingStatus('جاري توليد الصور بأسلوب نانو بنانا... (قد يستغرق 1-2 دقيقة)');
 
       const genRes = await fetch('/api/generate', {
         method: 'POST',
@@ -165,95 +165,87 @@ export default function HomePage() {
           perfumeData: product,
           vibe: scrapeData.recommendation.vibe,
           attire: scrapeData.recommendation.attire,
-          loraPath: 'https://v3b.fal.media/files/b/0a90eba7/OiQI7NS6N3neTl50fJHcC_pytorch_lora_weights.safetensors',
         }),
       });
       if (!genRes.ok) {
         const err = await genRes.json();
-        throw new Error(err.error || 'فشل إرسال طلب التوليد.');
+        throw new Error(err.error || 'فشل توليد الصور.');
       }
       const genData = await genRes.json();
 
-      // Step 2b: Poll fal.ai until all images are ready (client-side polling avoids Vercel timeout)
-      let pendingImages = genData.pendingImages;
-      const promptText = genData.prompt;
-      let completedImages: Array<{ format: 'story' | 'post' | 'landscape'; label: string; dimensions: { width: number; height: number }; url: string; aspectRatio: string }> = [];
-      const maxPolls = 60; // max 60 polls × 3s = 3 minutes
-      let pollCount = 0;
+      // Gemini returns images directly (no polling)
+      let completedImages: Array<{
+        format: 'story' | 'post' | 'landscape';
+        label: string;
+        dimensions: { width: number; height: number };
+        url: string;
+        aspectRatio: string;
+      }> = [];
 
-      while (pendingImages && pendingImages.length > 0 && pollCount < maxPolls) {
-        pollCount++;
-        const remaining = pendingImages.filter((img: { status?: string }) => img.status !== 'COMPLETED');
-        setLoadingStatus(`جاري توليد الصور... (${pollCount * 3}ث)`);
-        await new Promise((r) => setTimeout(r, 3000));
+      if (genData.status === 'completed' && genData.images) {
+        completedImages = genData.images.map((img: {
+          format: string;
+          label: string;
+          dimensions: { width: number; height: number };
+          url: string;
+          aspectRatio: string;
+        }) => ({
+          format: img.format as 'story' | 'post' | 'landscape',
+          label: img.label,
+          dimensions: img.dimensions,
+          url: img.url,
+          aspectRatio: img.aspectRatio,
+        }));
+      } else if (genData.pendingImages) {
+        // Fallback: legacy fal.ai polling mode (kept for compatibility)
+        let pendingImages = genData.pendingImages;
+        const promptText = genData.prompt;
+        const maxPolls = 60;
+        let pollCount = 0;
 
-        const pollRes = await fetch('/api/poll-status', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ pendingImages: remaining }),
-        });
+        while (pendingImages && pendingImages.length > 0 && pollCount < maxPolls) {
+          pollCount++;
+          const remaining = pendingImages.filter((img: { status?: string }) => img.status !== 'COMPLETED');
+          setLoadingStatus(`جاري توليد الصور... (${pollCount * 3}ث)`);
+          await new Promise((r) => setTimeout(r, 3000));
 
-        if (!pollRes.ok) continue;
+          const pollRes = await fetch('/api/poll-status', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ pendingImages: remaining }),
+          });
 
-        const pollData = await pollRes.json();
+          if (!pollRes.ok) continue;
+          const pollData = await pollRes.json();
 
-        // Collect completed images
-        for (const result of pollData.results) {
-          if (result.status === 'COMPLETED' && result.imageUrl) {
-            const fmt = result.format as 'story' | 'post' | 'landscape';
-            completedImages.push({
-              format: fmt,
-              label: result.label,
-              dimensions: result.dimensions,
-              url: result.imageUrl,
-              aspectRatio: fmt === 'story' ? '9:16' : fmt === 'post' ? '1:1' : '16:9',
-            });
+          for (const result of pollData.results) {
+            if (result.status === 'COMPLETED' && result.imageUrl) {
+              const fmt = result.format as 'story' | 'post' | 'landscape';
+              completedImages.push({
+                format: fmt,
+                label: result.label,
+                dimensions: result.dimensions,
+                url: result.imageUrl,
+                aspectRatio: fmt === 'story' ? '9:16' : fmt === 'post' ? '1:1' : '16:9',
+              });
+            }
           }
+
+          pendingImages = pollData.results.filter(
+            (r: { status: string }) => r.status !== 'COMPLETED' && r.status !== 'FAILED'
+          );
+
+          if (pollData.allCompleted) break;
         }
-
-        // Update pending list to only include still-pending items
-        pendingImages = pollData.results.filter(
-          (r: { status: string }) => r.status !== 'COMPLETED' && r.status !== 'FAILED'
-        );
-
-        if (pollData.allCompleted) break;
       }
 
       if (completedImages.length === 0) {
         throw new Error('فشل توليد الصور. يرجى المحاولة مرة أخرى.');
       }
 
-      // Step 2c: Composite real product bottle onto generated images
-      if (product.imageUrl && completedImages.length > 0) {
-        setLoadingStatus('جاري دمج صورة المنتج الحقيقية...');
-        try {
-          const compositePromises = completedImages.map(async (img) => {
-            const compRes = await fetch('/api/composite', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                characterImageUrl: img.url,
-                bottleImageUrl: product.imageUrl,
-                format: img.format,
-              }),
-            });
-            if (compRes.ok) {
-              const compData = await compRes.json();
-              if (compData.imageDataUrl) {
-                return { ...img, url: compData.imageDataUrl };
-              }
-            }
-            return img;
-          });
-          completedImages = await Promise.all(compositePromises);
-        } catch {
-          console.warn('Composite failed, using original images');
-        }
-      }
-
       const finalGenData: GenerationResult = {
         images: completedImages,
-        prompt: promptText,
+        prompt: genData.prompt || '',
         negativePrompt: '',
       };
       setGenerationResult(finalGenData);
@@ -345,7 +337,7 @@ export default function HomePage() {
             <div className="space-y-3">
               <h2 className="text-3xl font-bold text-[var(--gold)]">حملتك الإعلانية في ثوانٍ</h2>
               <p className="text-[var(--text-secondary)] max-w-md">
-                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور احترافية، كابشنات، وسيناريوهات فيديو ترند تلقائياً.
+                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور احترافية بأسلوب نانو بنانا، كابشنات، وسيناريوهات فيديو ترند تلقائياً.
               </p>
             </div>
 
@@ -374,7 +366,7 @@ export default function HomePage() {
 
             {/* Feature pills */}
             <div className="flex flex-wrap justify-center gap-2 text-xs text-[var(--text-muted)]">
-              {['صور 3 أحجام', 'كابشن انستغرام + تويتر + تيك توك', 'سيناريو فيديو ترند', 'صوت عربي سعودي', 'واتساب تلقائي'].map((f) => (
+              {['صور 3 أحجام بأسلوب نانو بنانا', 'كابشن انستغرام + تويتر + تيك توك', 'سيناريو فيديو ترند', 'صوت عربي سعودي', 'واتساب تلقائي'].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
                   ✓ {f}
                 </span>
@@ -398,39 +390,41 @@ export default function HomePage() {
         )}
 
         {/* ── OUTPUT STEP ── */}
-        {step === 'output' && (
-          <div className="space-y-6">
-            {/* Product info bar */}
+        {step === 'output' && generationResult && (
+          <div className="space-y-8 animate-fade-in-up">
+            {/* Product Info */}
             {perfumeData && (
               <div className="glass-card p-4 flex items-center gap-4">
                 {perfumeData.imageUrl && (
-                  // eslint-disable-next-line @next/next/no-img-element
-                  <img src={perfumeData.imageUrl} alt={perfumeData.name} className="w-12 h-12 object-contain rounded-lg" />
+                  <img
+                    src={perfumeData.imageUrl}
+                    alt={perfumeData.name}
+                    className="w-16 h-16 object-contain rounded-lg bg-black/20"
+                  />
                 )}
-                <div className="flex-1 min-w-0">
-                  <p className="font-bold text-[var(--text-primary)] truncate">{perfumeData.name}</p>
-                  <p className="text-xs text-[var(--text-muted)]">{perfumeData.brand} · {perfumeData.price}</p>
-                </div>
-                <div className="text-xs text-green-400 flex items-center gap-1">
-                  <span className="w-2 h-2 rounded-full bg-green-400 inline-block" />
-                  حملة جاهزة
+                <div>
+                  <p className="font-semibold text-[var(--text-primary)]">{perfumeData.name}</p>
+                  <p className="text-sm text-[var(--text-muted)]">{perfumeData.brand}</p>
+                  {perfumeData.price && (
+                    <p className="text-xs text-[var(--gold)]">{perfumeData.price}</p>
+                  )}
                 </div>
               </div>
             )}
 
-            {/* Tabs */}
+            {/* Tab Navigation */}
             <div className="flex gap-1 p-1 bg-[var(--obsidian-light)] rounded-xl">
               {[
-                { id: 'images', label: 'الصور', icon: Image },
-                { id: 'captions', label: 'الكابشنات', icon: MessageSquare },
-                { id: 'videos', label: 'سيناريوهات الفيديو', icon: Video },
-              ].map(({ id, label, icon: Icon }) => (
+                { key: 'images', label: 'الصور', icon: Image },
+                { key: 'captions', label: 'الكابشنات', icon: MessageSquare },
+                { key: 'videos', label: 'الفيديو', icon: Video },
+              ].map(({ key, label, icon: Icon }) => (
                 <button
-                  key={id}
-                  onClick={() => setActiveTab(id as typeof activeTab)}
-                  className={`flex-1 flex items-center justify-center gap-2 py-2.5 text-xs rounded-lg transition-all ${
-                    activeTab === id
-                      ? 'bg-[var(--gold)] text-black font-bold'
+                  key={key}
+                  onClick={() => setActiveTab(key as 'images' | 'captions' | 'videos')}
+                  className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
+                    activeTab === key
+                      ? 'bg-[var(--gold)] text-black'
                       : 'text-[var(--text-muted)] hover:text-[var(--text-primary)]'
                   }`}
                 >
@@ -440,23 +434,31 @@ export default function HomePage() {
               ))}
             </div>
 
-            {/* Tab content */}
-            {activeTab === 'images' && generationResult && (
-              <OutputGrid images={generationResult.images} perfumeName={perfumeData?.name ?? ''} />
+            {/* Images Tab */}
+            {activeTab === 'images' && (
+              <OutputGrid images={generationResult.images} />
             )}
 
-            {activeTab === 'captions' && (
-              captionResult ? (
-                <CaptionsSection captionResult={captionResult} />
-              ) : (
-                <div className="glass-card p-8 text-center text-[var(--text-muted)]">
-                  <p>جاري تحضير الكابشنات...</p>
-                </div>
-              )
+            {/* Captions Tab */}
+            {activeTab === 'captions' && captionResult && (
+              <CaptionsSection captionResult={captionResult} />
+            )}
+            {activeTab === 'captions' && !captionResult && (
+              <div className="text-center py-12 text-[var(--text-muted)]">
+                <Loader2 size={24} className="animate-spin mx-auto mb-3" />
+                <p>جاري توليد الكابشنات...</p>
+              </div>
             )}
 
+            {/* Videos Tab */}
             {activeTab === 'videos' && scenarios && (
               <ScenarioDisplay scenarios={scenarios} />
+            )}
+            {activeTab === 'videos' && !scenarios && (
+              <div className="text-center py-12 text-[var(--text-muted)]">
+                <Loader2 size={24} className="animate-spin mx-auto mb-3" />
+                <p>جاري توليد السيناريوهات...</p>
+              </div>
             )}
           </div>
         )}

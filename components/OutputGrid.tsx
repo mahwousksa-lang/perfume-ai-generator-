@@ -20,7 +20,7 @@ import type { GeneratedImage } from '@/lib/types';
 
 interface OutputGridProps {
   images: GeneratedImage[];
-  perfumeName: string;
+  perfumeName?: string;
 }
 
 const FORMAT_ICONS: Record<string, React.ElementType> = {
@@ -50,6 +50,17 @@ const FORMAT_PLATFORMS: Record<string, string> = {
 //  3. window.open NEVER crashes the app — browser handles it natively
 //
 function safeDownload(url: string, filename: string): void {
+  // For data URLs (from Gemini), use direct download
+  if (url.startsWith('data:')) {
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    return;
+  }
+
   // For fal.media and other CDN URLs, skip fetch entirely
   // and use window.open for a reliable zero-crash experience
   const isCrossDomain =
@@ -76,8 +87,8 @@ function safeDownload(url: string, filename: string): void {
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
-export default function OutputGrid({ images, perfumeName }: OutputGridProps) {
-  const safeName = perfumeName.replace(/\s+/g, '-').toLowerCase();
+export default function OutputGrid({ images, perfumeName = 'perfume' }: OutputGridProps) {
+  const safeName = (perfumeName || 'perfume').replace(/\s+/g, '-').toLowerCase();
 
   return (
     <div className="space-y-6 animate-fade-in-up">
