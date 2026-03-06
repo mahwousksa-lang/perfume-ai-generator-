@@ -37,15 +37,9 @@ export interface GenerationRequest {
   perfumeData: PerfumeData;
   vibe: string;
   attire: string;
-  // ── Fal.ai LoRA fields ─────────────────────────────────────────────────────
-  /** Direct URL to the LoRA .safetensors weights file on fal.ai or HuggingFace */
   loraPath?: string;
-  /** Trigger word injected at the START of the prompt — activates the trained face */
   loraTriggerWord?: string;
-  // ── Bottle reference ───────────────────────────────────────────────────────
-  /** Base64-encoded bottle reference image (with data:image/... prefix) */
   bottleImageBase64?: string;
-  /** Claude/Gemini Vision description of the bottle for prompt injection */
   bottleDescription?: string;
 }
 
@@ -62,6 +56,48 @@ export interface GenerationResult {
   prompt: string;
   negativePrompt: string;
 }
+
+// ── Platform Distribution Types ─────────────────────────────────────────────
+
+export type SourceFormat = 'story' | 'post' | 'landscape';
+
+export interface PlatformUsage {
+  id: string;
+  platform: string;
+  platformAr: string;
+  usage: string;
+  usageAr: string;
+  sourceFormat: SourceFormat;
+  icon: string;
+  color: string;
+  hasCaption: boolean;
+  captionKey: string;
+}
+
+export interface PlatformCaptions {
+  instagram_post: string;
+  instagram_story: string;
+  facebook_post: string;
+  facebook_story: string;
+  twitter: string;
+  linkedin: string;
+  snapchat: string;
+  tiktok: string;
+  pinterest: string;
+  telegram: string;
+  haraj: string;
+  truth_social: string;
+  youtube_thumbnail: string;
+  youtube_shorts: string;
+  whatsapp: string;
+}
+
+export interface DistributionResult {
+  captions: PlatformCaptions;
+  source: string;
+}
+
+// ── Scrape Types ────────────────────────────────────────────────────────────
 
 export interface ScrapedProduct {
   name?: string;
@@ -83,10 +119,8 @@ export interface ScrapeResult {
 }
 
 export interface CaptionResult {
-  captions: {
-    instagram: string;
-    twitter: string;
-  };
+  captions: PlatformCaptions | Record<string, string>;
+  source?: string;
 }
 
 export interface BottleAnalysisResult {

@@ -2,116 +2,20 @@
 
 import { useState, useRef } from 'react';
 import { Toaster, toast } from 'sonner';
-import { ArrowLeft, Loader2, Link2, Sparkles, Video, MessageSquare, Image, Copy, Check, Instagram, Twitter, Upload, X } from 'lucide-react';
+import { ArrowLeft, Loader2, Link2, Sparkles, Video, Image, Upload, X } from 'lucide-react';
 
 import type {
   PerfumeData,
   GenerationResult,
-  ScrapeResult,
   CaptionResult,
+  ScrapeResult,
   AppStep,
   VideoScenario,
+  PlatformCaptions,
 } from '@/lib/types';
 
 import OutputGrid from '@/components/OutputGrid';
 import ScenarioDisplay from '@/components/ScenarioDisplay';
-
-// ─── TikTok Icon ─────────────────────────────────────────────────────────────
-function TikTokIcon({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg">
-      <path d="M19.59 6.69a4.83 4.83 0 01-3.77-4.25V2h-3.45v13.67a2.89 2.89 0 01-2.88 2.5 2.89 2.89 0 01-2.89-2.89 2.89 2.89 0 012.89-2.89c.28 0 .54.04.79.1V9.01a6.33 6.33 0 00-.79-.05 6.34 6.34 0 00-6.34 6.34 6.34 6.34 0 006.34 6.34 6.34 6.34 0 006.33-6.34V8.69a8.18 8.18 0 004.78 1.52V6.76a4.85 4.85 0 01-1.01-.07z"/>
-    </svg>
-  );
-}
-
-// ─── Snapchat Icon ────────────────────────────────────────────────────────────
-function SnapchatIcon({ size = 16, color = 'currentColor' }: { size?: number; color?: string }) {
-  return (
-    <svg width={size} height={size} viewBox="0 0 24 24" fill={color} xmlns="http://www.w3.org/2000/svg">
-      <path d="M12.166 2C9.44 2 7.3 3.23 6.3 5.14c-.5.93-.6 1.9-.6 2.86v1.5c-.3.1-.6.14-.9.14-.5 0-.8-.1-1-.2l-.1-.05-.1.05c-.2.1-.3.3-.3.5 0 .4.4.7.9.9.1.05.2.05.3.1-.1.3-.4.6-.9.8-.5.2-.8.5-.8.9 0 .3.2.6.5.8.1.05.2.1.3.1.4.1.8.2 1.2.4.1.05.2.1.3.2.1.1.1.2.1.3-.1.2-.3.4-.5.6-.3.3-.6.7-.6 1.2 0 .9.8 1.6 2.2 1.9.1.3.2.7.5.9.2.1.4.2.7.2.3 0 .6-.1.9-.2.5-.2 1-.3 1.5-.3.5 0 1 .1 1.5.3.3.1.6.2.9.2.3 0 .5-.1.7-.2.3-.2.4-.6.5-.9 1.4-.3 2.2-1 2.2-1.9 0-.5-.3-.9-.6-1.2-.2-.2-.4-.4-.5-.6 0-.1 0-.2.1-.3.1-.1.2-.15.3-.2.4-.2.8-.3 1.2-.4.1 0 .2-.05.3-.1.3-.2.5-.5.5-.8 0-.4-.3-.7-.8-.9-.5-.2-.8-.5-.9-.8.1-.05.2-.05.3-.1.5-.2.9-.5.9-.9 0-.2-.1-.4-.3-.5l-.1-.05-.1.05c-.2.1-.5.2-1 .2-.3 0-.6-.04-.9-.14v-1.5c0-.96-.1-1.93-.6-2.86C16.7 3.23 14.56 2 12.166 2z"/>
-    </svg>
-  );
-}
-
-// ─── Caption Card Component ───────────────────────────────────────────────────
-function CaptionCard({
-  platform,
-  icon: Icon,
-  color,
-  caption,
-}: {
-  platform: string;
-  icon: React.ElementType;
-  color: string;
-  caption: string;
-}) {
-  const [copied, setCopied] = useState(false);
-  const safeCaption = typeof caption === 'string' ? caption : String(caption ?? '');
-
-  const handleCopy = () => {
-    if (typeof navigator !== 'undefined' && navigator.clipboard) {
-      navigator.clipboard.writeText(safeCaption).catch(() => {});
-    }
-    setCopied(true);
-    setTimeout(() => setCopied(false), 2000);
-  };
-
-  return (
-    <div className="glass-card p-5 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg flex items-center justify-center" style={{ background: color + '22' }}>
-            <Icon size={16} style={{ color }} />
-          </div>
-          <span className="text-sm font-medium text-[var(--text-primary)]">{platform}</span>
-        </div>
-        <button
-          onClick={handleCopy}
-          className="flex items-center gap-1.5 text-xs px-3 py-1.5 rounded-lg border border-[var(--obsidian-border)] text-[var(--text-muted)] hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors"
-        >
-          {copied ? <Check size={12} /> : <Copy size={12} />}
-          {copied ? 'تم النسخ!' : 'نسخ'}
-        </button>
-      </div>
-      <div className="bg-black/20 rounded-xl p-4 min-h-[80px]">
-        <p className="caption-text text-sm whitespace-pre-wrap">{safeCaption}</p>
-      </div>
-      <p className="text-[10px] text-[var(--text-muted)] text-right font-mono">
-        {safeCaption.length} حرف
-      </p>
-    </div>
-  );
-}
-
-// ─── Captions Section ─────────────────────────────────────────────────────────
-function CaptionsSection({ captionResult }: { captionResult: CaptionResult }) {
-  const captions = captionResult.captions as Record<string, string>;
-  const instagram = typeof captions.instagram === 'string' ? captions.instagram : '';
-  const twitter = typeof captions.twitter === 'string' ? captions.twitter : '';
-  const tiktok = typeof captions.tiktok === 'string' ? captions.tiktok : '';
-  const snapchat = typeof captions.snapchat === 'string' ? captions.snapchat : '';
-
-  return (
-    <div className="space-y-4 animate-fade-in-up">
-      <div className="flex items-center gap-3">
-        <div className="gold-divider flex-1" />
-        <p className="section-label mb-0 px-2">كابشنات السوشيال ميديا</p>
-        <div className="gold-divider flex-1" />
-      </div>
-      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-        <CaptionCard platform="Instagram" icon={Instagram} color="#E1306C" caption={instagram} />
-        <CaptionCard platform="Twitter / X" icon={Twitter} color="#1DA1F2" caption={twitter} />
-        {tiktok ? (
-          <CaptionCard platform="TikTok" icon={TikTokIcon as React.ElementType} color="#010101" caption={tiktok} />
-        ) : null}
-        {snapchat ? (
-          <CaptionCard platform="Snapchat" icon={SnapchatIcon as React.ElementType} color="#FFFC00" caption={snapchat} />
-        ) : null}
-      </div>
-    </div>
-  );
-}
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -121,7 +25,7 @@ export default function HomePage() {
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [captionResult, setCaptionResult] = useState<CaptionResult | null>(null);
   const [scenarios, setScenarios] = useState<VideoScenario[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'captions' | 'videos'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'videos'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
 
   // ── Product reference image upload state ──────────────────────────────────
@@ -133,13 +37,11 @@ export default function HomePage() {
     const file = e.target.files?.[0];
     if (!file) return;
 
-    // Validate file type
     if (!file.type.startsWith('image/')) {
       toast.error('يرجى اختيار ملف صورة صالح (JPG, PNG, WEBP)');
       return;
     }
 
-    // Validate file size (max 10MB)
     if (file.size > 10 * 1024 * 1024) {
       toast.error('حجم الصورة يجب أن يكون أقل من 10 ميجابايت');
       return;
@@ -194,11 +96,8 @@ export default function HomePage() {
       };
       setPerfumeData(product);
 
-      // Step 2: Generate images — FLUX LoRA + Gemini Nano Banana
-      const pipelineDesc = bottleImageBase64
-        ? 'FLUX LoRA img2img (صورة مرجعية) + Gemini Nano Banana'
-        : 'FLUX LoRA + Gemini Nano Banana';
-      setLoadingStatus(`جاري توليد الصور بأسلوب ${pipelineDesc}... (قد يستغرق 2-3 دقائق)`);
+      // Step 2: Generate images — Gemini Nano Banana (primary) + FLUX LoRA (fallback)
+      setLoadingStatus('جاري توليد الصور بأسلوب نانو بنانا...');
 
       const genRes = await fetch('/api/generate', {
         method: 'POST',
@@ -207,7 +106,6 @@ export default function HomePage() {
           perfumeData: product,
           vibe: scrapeData.recommendation.vibe,
           attire: scrapeData.recommendation.attire,
-          // ── Pass the user-uploaded bottle reference image ──
           bottleImageBase64: bottleImageBase64 || undefined,
         }),
       });
@@ -217,7 +115,6 @@ export default function HomePage() {
       }
       const genData = await genRes.json();
 
-      // Gemini returns images directly (no polling)
       let completedImages: Array<{
         format: 'story' | 'post' | 'landscape';
         label: string;
@@ -241,24 +138,22 @@ export default function HomePage() {
           aspectRatio: img.aspectRatio,
         }));
       } else if (genData.pendingImages) {
-        // Fallback: legacy fal.ai polling mode (kept for compatibility)
+        // Legacy fal.ai polling mode (fallback)
         let pendingImages = genData.pendingImages;
         const maxPolls = 60;
         let pollCount = 0;
 
         while (pendingImages && pendingImages.length > 0 && pollCount < maxPolls) {
-          pollCount++;
-          const remaining = pendingImages.filter((img: { status?: string }) => img.status !== 'COMPLETED');
           setLoadingStatus(`جاري توليد الصور... (${pollCount * 3}ث)`);
           await new Promise((r) => setTimeout(r, 3000));
 
           const pollRes = await fetch('/api/poll-status', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ pendingImages: remaining }),
+            body: JSON.stringify({ pendingImages }),
           });
 
-          if (!pollRes.ok) continue;
+          if (!pollRes.ok) { pollCount++; continue; }
           const pollData = await pollRes.json();
 
           for (const result of pollData.results) {
@@ -279,6 +174,7 @@ export default function HomePage() {
           );
 
           if (pollData.allCompleted) break;
+          pollCount++;
         }
       }
 
@@ -293,8 +189,8 @@ export default function HomePage() {
       };
       setGenerationResult(finalGenData);
 
-      // Step 3: Generate captions
-      setLoadingStatus('جاري كتابة الكابشنات...');
+      // Step 3: Generate captions for ALL platforms (runs in parallel with display)
+      setLoadingStatus('جاري كتابة الكابشنات لجميع المنصات...');
       const capRes = await fetch('/api/captions', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -326,7 +222,7 @@ export default function HomePage() {
       }
 
       setStep('output');
-      toast.success('حملتك جاهزة! 🎉');
+      toast.success('حملتك جاهزة لجميع المنصات! 🎉');
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'حدث خطأ غير متوقع.';
       toast.error(errorMessage);
@@ -385,7 +281,7 @@ export default function HomePage() {
             <div className="space-y-3">
               <h2 className="text-3xl font-bold text-[var(--gold)]">حملتك الإعلانية في ثوانٍ</h2>
               <p className="text-[var(--text-secondary)] max-w-md">
-                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور احترافية بأسلوب نانو بنانا، كابشنات، وسيناريوهات فيديو ترند تلقائياً.
+                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور احترافية بأسلوب نانو بنانا مع كابشنات مخصصة لـ 15 منصة سوشال ميديا.
               </p>
             </div>
 
@@ -439,7 +335,7 @@ export default function HomePage() {
                       <div className="flex-1 text-right">
                         <p className="text-xs text-[var(--gold)] font-medium">صورة المنتج المرجعية</p>
                         <p className="text-[10px] text-[var(--text-muted)] mt-1">
-                          سيتم استخدام هذه الصورة كمرجع لشكل الزجاجة الحقيقي في الصور المولَّدة
+                          سيتم استخدام هذه الصورة كمرجع لشكل الزجاجة الحقيقي
                         </p>
                       </div>
                       <button
@@ -464,7 +360,6 @@ export default function HomePage() {
                 {bottleImageBase64 ? 'ابدأ التوليد (مع صورة مرجعية)' : 'ابدأ توليد الحملة'}
               </button>
 
-              {/* Indicator for reference image */}
               {bottleImageBase64 && (
                 <p className="text-[10px] text-[var(--gold)] text-center animate-pulse">
                   سيتم استخدام الصورة المرجعية لضمان دقة شكل الزجاجة 100%
@@ -474,7 +369,14 @@ export default function HomePage() {
 
             {/* Feature pills */}
             <div className="flex flex-wrap justify-center gap-2 text-xs text-[var(--text-muted)]">
-              {['صور 3 أحجام بأسلوب نانو بنانا', 'صورة مرجعية للمنتج', 'كابشن انستغرام + تويتر + تيك توك', 'سيناريو فيديو ترند', 'صوت عربي سعودي', 'واتساب تلقائي'].map((f) => (
+              {[
+                '3 صور بأسلوب نانو بنانا',
+                '15 منصة سوشال ميديا',
+                'كابشن مخصص لكل منصة',
+                'صورة مرجعية للمنتج',
+                'سيناريو فيديو ترند',
+                'حراج + تلقرام + تروث',
+              ].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
                   ✓ {f}
                 </span>
@@ -525,16 +427,15 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Tab Navigation */}
+            {/* Tab Navigation — 2 tabs only: الصور + الفيديو */}
             <div className="flex gap-1 p-1 bg-[var(--obsidian-light)] rounded-xl">
               {[
-                { key: 'images', label: 'الصور', icon: Image },
-                { key: 'captions', label: 'الكابشنات', icon: MessageSquare },
+                { key: 'images', label: 'الصور والكابشنات', icon: Image },
                 { key: 'videos', label: 'الفيديو', icon: Video },
               ].map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as 'images' | 'captions' | 'videos')}
+                  onClick={() => setActiveTab(key as 'images' | 'videos')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                     activeTab === key
                       ? 'bg-[var(--gold)] text-black'
@@ -547,20 +448,13 @@ export default function HomePage() {
               ))}
             </div>
 
-            {/* Images Tab */}
+            {/* Images + Captions Tab — merged into one */}
             {activeTab === 'images' && (
-              <OutputGrid images={generationResult.images} />
-            )}
-
-            {/* Captions Tab */}
-            {activeTab === 'captions' && captionResult && (
-              <CaptionsSection captionResult={captionResult} />
-            )}
-            {activeTab === 'captions' && !captionResult && (
-              <div className="text-center py-12 text-[var(--text-muted)]">
-                <Loader2 size={24} className="animate-spin mx-auto mb-3" />
-                <p>جاري توليد الكابشنات...</p>
-              </div>
+              <OutputGrid
+                images={generationResult.images}
+                captions={(captionResult?.captions as PlatformCaptions) || null}
+                perfumeName={perfumeData?.name}
+              />
             )}
 
             {/* Videos Tab */}
