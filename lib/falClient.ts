@@ -46,22 +46,22 @@ const ASPECT_CONFIGS: AspectConfig[] = [
     format: 'story',
     label: 'Instagram Story (9:16)',
     aspectRatio: '9:16',
-    imageSize: { width: 768, height: 1344 },
-    dimensions: { width: 768, height: 1344 },
+    imageSize: { width: 1080, height: 1920 },
+    dimensions: { width: 1080, height: 1920 },
   },
   {
     format: 'post',
     label: 'Post Square (1:1)',
     aspectRatio: '1:1',
-    imageSize: { width: 1024, height: 1024 },
-    dimensions: { width: 1024, height: 1024 },
+    imageSize: { width: 1080, height: 1080 },
+    dimensions: { width: 1080, height: 1080 },
   },
   {
     format: 'landscape',
     label: 'Twitter / LinkedIn (16:9)',
     aspectRatio: '16:9',
-    imageSize: { width: 1344, height: 768 },
-    dimensions: { width: 1344, height: 768 },
+    imageSize: { width: 1280, height: 720 },
+    dimensions: { width: 1280, height: 720 },
   },
 ];
 
@@ -166,13 +166,13 @@ async function generateSingleFormat(
 
   // ── Attach LoRA weights (face consistency) ──────────────────────────────────
   if (loraPath?.trim()) {
-    input.loras = [{ path: loraPath.trim(), scale: 0.90 }];
+    input.loras = [{ path: loraPath.trim(), scale: 1.0 }];
   }
 
   // ── Attach bottle reference (img2img — product fidelity) ────────────────────
   if (bottleImageBase64?.startsWith('data:image/')) {
     input.image_url = bottleImageBase64;
-    input.strength = 0.35;
+    input.strength = 0.4;
   }
 
   const requestId = await submitToQueue(input);

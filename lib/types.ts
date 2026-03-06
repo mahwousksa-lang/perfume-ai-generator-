@@ -3,6 +3,8 @@
 // ============================================================
 
 export type Vibe =
+  | 'rose_garden'
+  | 'majlis'
   | 'royal_luxury'
   | 'modern_corporate'
   | 'winter_cabin'
@@ -13,6 +15,8 @@ export type Vibe =
   | 'ocean_breeze';
 
 export type Attire =
+  | 'black_suit_gold_details'
+  | 'saudi_bisht'
   | 'white_thobe_black_bisht'
   | 'charcoal_suit_gold_tie'
   | 'white_thobe_only'
@@ -26,6 +30,7 @@ export interface PerfumeData {
   notes?: string;
   description?: string;
   imageUrl?: string;
+  price?: string;
 }
 
 export interface GenerationRequest {

@@ -1,12 +1,13 @@
 // ============================================================
 // lib/promptEngine.ts — SERVER-SIDE ONLY — SELF-CONTAINED
 // ============================================================
-// STYLE: High-end 3D Animation (Pixar/Disney CGI)
-// CHARACTER: Mahwous mascot — Arab man, neat beard, big brown eyes
+// STYLE: Hyper-realistic Pixar/Disney 3D CGI — Ultra High Quality
+// CHARACTER: Mahwous mascot — Arab man, neat beard, brown eyes
 //
 // ✅ لا imports خارجية عدا type — مستقل 100% من webpack bundling issues
 // ✅ trigger_word أول token دائماً لأعلى LoRA attention weight
 // ✅ VIBE_MAP + ATTIRE_MAP مضمّنة محلياً
+// ✅ محسّن لتوليد صور بجودة تضاهي النماذج الاحترافية
 // ============================================================
 
 import type { GenerationRequest } from './types';
@@ -18,11 +19,25 @@ const VIBE_MAP: Record<string, {
   lighting: string;
   mood: string;
 }> = {
+  rose_garden: {
+    description:
+      'in a lush, magical rose garden filled with dense blooming pink roses, glowing golden butterflies, soft morning mist, enchanted forest atmosphere, rose petals floating in the air',
+    lighting:
+      'soft diffused morning golden light filtering through the rose petals, magical warm glow, bokeh background',
+    mood: 'romantic, enchanting, dreamy, serene',
+  },
+  majlis: {
+    description:
+      'in a luxurious modern Saudi majlis, rich green velvet curtains, ornate Arabic coffee pot (dallah) on a golden tray, small coffee cups (finjan), blooming flowers in the background, subtle oud smoke wisps',
+    lighting:
+      'soft warm interior lighting with natural light from an arched window, creating a welcoming and opulent atmosphere',
+    mood: 'hospitable, traditional, luxurious, warm',
+  },
   royal_luxury: {
     description:
-      'inside an opulent royal palace hall, soaring golden columns, polished white marble floors with geometric inlay, cascading crystal chandeliers, deep purple velvet drapes, golden throne softly visible in background',
+      'inside an opulent royal palace hall, soaring white marble columns with gold accents, polished white marble floors with intricate geometric inlay, cascading crystal chandeliers, deep ivory velvet drapes, soft golden light from arched windows',
     lighting:
-      'warm dramatic golden shafts from arched windows, volumetric god rays, deep rich shadows',
+      'warm dramatic golden shafts from arched windows, volumetric god rays, deep rich shadows, cinematic depth',
     mood: 'majestic, commanding, regal, imperial',
   },
   modern_corporate: {
@@ -34,14 +49,14 @@ const VIBE_MAP: Record<string, {
   },
   winter_cabin: {
     description:
-      'inside a luxurious alpine chalet, dark timber beams, large crackling stone fireplace, cognac leather furniture, Persian kilim rugs, snow-heavy pine trees through panoramic windows',
+      'inside a luxurious alpine chalet, dark timber beams, large crackling stone fireplace with blue flames, cognac leather furniture, snow-heavy pine trees through panoramic windows, snow-covered mountains visible',
     lighting:
-      'intimate amber firelight dancing across the scene, snow-diffused soft daylight, warm shadows',
+      'intimate amber firelight dancing across the scene, cool blue light from the snow outside, warm shadows',
     mood: 'warm, intimate, refined, contemplative',
   },
   classic_library: {
     description:
-      'inside a grand private mahogany library, floor-to-ceiling leather-bound books, rolling brass ladder, deep Chesterfield armchair, Tiffany lamp, bronze globe, Persian rugs on dark hardwood',
+      'inside a grand private mahogany library, floor-to-ceiling leather-bound books, rolling brass ladder, deep Chesterfield armchair, Tiffany lamp, lush tropical fern plants, Persian rugs on dark hardwood',
     lighting:
       'warm brass lamp glow, soft candlelight, golden hour slanting through high casement window',
     mood: 'intellectual, timeless, distinguished, powerful',
@@ -79,6 +94,14 @@ const VIBE_MAP: Record<string, {
 // ─── Attire Map ───────────────────────────────────────────────────────────────
 
 const ATTIRE_MAP: Record<string, { description: string }> = {
+  black_suit_gold_details: {
+    description:
+      'impeccably tailored modern black suit with subtle gold embroidery on the lapels, crisp white shirt, and a shining gold tie with a gold pocket square',
+  },
+  saudi_bisht: {
+    description:
+      'traditional Saudi white thobe and a luxurious black bisht with wide gold trim, embodying Arabian heritage and elegance',
+  },
   white_thobe_black_bisht: {
     description:
       'pristine snow-white Saudi thobe with fine gold embroidery at collar and cuffs, sweeping jet-black bisht cloak edged with thick gold trim, traditional white ghutrah headdress with black agal crown',
@@ -103,21 +126,21 @@ const ATTIRE_MAP: Record<string, { description: string }> = {
 
 // ─── buildPrompt ─────────────────────────────────────────────────────────────
 //
-// STYLE: Pixar / Disney 3D CGI Animation — NOT photorealistic
+// STYLE: Hyper-realistic Pixar/Disney 3D CGI — Ultra High Quality
 //
-// Character reference (Mahwous mascot as seen in brand image):
-//   • 3D cartoon Arab man, mid-30s
-//   • Big expressive warm brown eyes — signature Pixar trait
-//   • Neat trimmed goatee beard, stylized but detailed
-//   • Smooth 3D stylized skin with subtle shading
-//   • Slightly exaggerated proportions (larger head, expressive face)
-//   • Warm olive-tan skin, friendly confident expression
+// Character reference (Mahwous mascot):
+//   • Handsome Arab man, early 30s
+//   • Perfectly groomed black hair swept back stylishly
+//   • Neat, well-defined black beard
+//   • Expressive warm brown eyes
+//   • Smooth olive-tan skin with realistic 3D texture
+//   • Slightly stylized Pixar-proportioned features
+//   • Warm friendly confident expression
 //
-// HAND-BOTTLE TECHNIQUE (kept precise for composite in post):
-//   • Right hand open-palm presentation pose (not gripping)
-//     OR natural grip — both described so model can choose
-//   • Wrist angle 15° toward camera = full label visibility
-//   • Bottle at chest-waist height
+// HAND-BOTTLE TECHNIQUE:
+//   • Right hand natural grip at chest height
+//   • Bottle fully visible with legible label
+//   • Photorealistic glass rendering
 // ─────────────────────────────────────────────────────────────────────────────
 
 export function buildPrompt(request: GenerationRequest): string {
@@ -130,7 +153,7 @@ export function buildPrompt(request: GenerationRequest): string {
   } = request;
 
   const vibeData   = VIBE_MAP[vibe]    ?? VIBE_MAP['royal_luxury'];
-  const attireData = ATTIRE_MAP[attire] ?? ATTIRE_MAP['white_thobe_black_bisht'];
+  const attireData = ATTIRE_MAP[attire] ?? ATTIRE_MAP['black_suit_gold_details'];
 
   // ── LAYER 1: Trigger word — أول token = أعلى attention weight ──────────────
   const triggerPrefix = loraTriggerWord?.trim()
@@ -146,11 +169,11 @@ export function buildPrompt(request: GenerationRequest): string {
     // 1. LoRA trigger (mandatory first position)
     triggerPrefix,
 
-    // 2. Style declaration — Pixar/Disney 3D CGI (NOT photorealistic)
-    'high-end 3D animation render, Pixar Disney CGI style, smooth stylized 3D character,',
+    // 2. Style declaration — Hyper-realistic Pixar/Disney 3D CGI
+    'hyper-detailed 3D animation render, Pixar Disney CGI style, ultra-realistic 3D character,',
 
-    // 3. Character — Mahwous mascot
-    'charming Arab man in his mid-30s, big expressive warm brown eyes with thick lashes, neatly trimmed goatee beard stylized in 3D, smooth olive-tan 3D skin with subtle cel shading, slightly larger expressive Pixar-style head, warm friendly confident smile,',
+    // 3. Character — Mahwous mascot (consistent features)
+    'a handsome Arab man in his early 30s, with perfectly groomed black hair swept back stylishly, a neat well-defined black beard, expressive warm brown eyes, smooth olive-tan skin with realistic 3D texture, slightly stylized Pixar-proportioned features, warm friendly confident expression, looking directly at the viewer,',
 
     // 4. Attire
     `wearing ${attireData.description},`,
@@ -162,19 +185,17 @@ export function buildPrompt(request: GenerationRequest): string {
     `${vibeData.lighting},`,
 
     // 7. Hand-bottle interaction (precise for bottle compositing)
-    `presenting the ${bottleRef} held naturally in his right hand at chest height, thumb along side, fingers gently curved underneath, wrist tilted 15 degrees toward viewer so the front label is fully visible and legible, arm slightly bent,`,
+    `elegantly holding the ${bottleRef} in his right hand, presenting it clearly to the viewer with a natural elegant pose. The bottle is rendered with photorealistic glass material, accurate label text clearly visible, beautiful light refractions and reflections, correct proportions matching the real product,`,
 
-    // 8. Bottle rendering
-    'bottle rendered with accurate 3D glass material, light refractions, crisp legible label, correct proportions,',
+    // 8. Pose & mood
+    `posture is ${vibeData.mood}, weight naturally shifted, genuine confident expression,`,
 
-    // 9. Pose & mood
-    `posture is ${vibeData.mood}, weight naturally shifted, genuine confident expression, gaze toward camera,`,
-
-    // 10. Technical quality (3D animation standard)
-    'studio-quality 3D render, subsurface scattering on skin, global illumination, soft ambient occlusion, 8K resolution, cinematic shallow DOF, professional 3D commercial advertisement, Pixar render quality, no grain, clean smooth surfaces.',
+    // 9. Technical quality (ultra-high quality render)
+    'ultra-realistic 8K 3D render, Octane Render quality, cinematic composition, dramatic studio lighting, subsurface scattering on skin, global illumination, soft ambient occlusion, intricate details, flawless textures, professional commercial photography quality, masterpiece, award-winning.',
   ];
 
   return parts
+    .filter(Boolean)
     .join(' ')
     .replace(/\s{2,}/g, ' ')
     .trim();
@@ -184,12 +205,10 @@ export function buildPrompt(request: GenerationRequest): string {
 
 export function buildNegativePrompt(): string {
   return [
-    'photorealistic, photo, photograph, hyperrealistic, DSLR, camera photo,',
-    'blurry, low quality, low resolution, ugly, deformed, disfigured,',
+    'ugly, deformed, disfigured, poor quality, blurry, low resolution,',
     'mutated hands, extra fingers, missing fingers, six fingers, fused fingers, wrong hand anatomy,',
     'floating bottle, bottle clipping, obscured label, distorted label, misspelled label,',
     'multiple people, two men, background figures, crowd,',
-    'anime, 2D, flat shading, cell shading, illustration, painting, sketch,',
     'watermark, text overlay, logo bug, frame, border,',
     'overexposed, underexposed, washed out,',
     'bad proportions, rigid pose, stiff mannequin,',

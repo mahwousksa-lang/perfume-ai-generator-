@@ -27,6 +27,26 @@ export interface AttireData {
 // ─── Vibe / Background Database ──────────────────────────────────────────────
 
 export const VIBE_MAP: Record<string, VibeData> = {
+  rose_garden: {
+    label: 'Rose Garden',
+    arabicLabel: 'حديقة الورود',
+    description:
+      'in a lush, magical rose garden, with dense blooming pink roses, glowing butterflies, soft morning mist, creating an enchanted forest atmosphere',
+    lighting:
+      'soft, diffused morning light with warm golden sunbeams filtering through the leaves and magical glowing elements',
+    mood: 'romantic, enchanting, dreamy, serene',
+    colorPalette: 'pink, green, gold, white',
+  },
+  majlis: {
+    label: 'Majlis',
+    arabicLabel: 'مجلس عربي',
+    description:
+      'in a luxurious modern Saudi majlis, featuring rich green curtains, an ornate Arabic coffee pot (dallah), and small coffee cups (finjan), with a background of blooming flowers and subtle oud smoke',
+    lighting:
+      'soft, warm interior lighting combined with natural light from a window, creating a welcoming and opulent atmosphere',
+    mood: 'hospitable, traditional, luxurious, warm',
+    colorPalette: 'green, gold, brown, white',
+  },
   royal_luxury: {
     label: 'Royal Luxury',
     arabicLabel: 'الفخامة الملكية',
@@ -112,6 +132,18 @@ export const VIBE_MAP: Record<string, VibeData> = {
 // ─── Attire Database ──────────────────────────────────────────────────────────
 
 export const ATTIRE_MAP: Record<string, AttireData> = {
+  black_suit_gold_details: {
+    label: 'Black Suit, Gold Details',
+    arabicLabel: 'بدلة سوداء بتفاصيل ذهبية',
+    description:
+      'an impeccably tailored modern black suit with subtle gold embroidery on the lapels, a crisp white shirt, and a shining gold tie',
+  },
+  saudi_bisht: {
+    label: 'Saudi Bisht',
+    arabicLabel: 'بشت سعودي',
+    description:
+      'a traditional Saudi thobe and a luxurious black bisht with gold trim, embodying Arabian heritage and elegance',
+  },
   white_thobe_black_bisht: {
     label: 'White Thobe + Black Bisht',
     arabicLabel: 'ثوب أبيض + بشت أسود',
