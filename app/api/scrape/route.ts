@@ -2,17 +2,15 @@
 // app/api/scrape/route.ts
 // POST /api/scrape
 // 1. Scrapes a perfume product URL for structured data
-// 2. Uses Claude to determine ideal vibe + attire
+// 2. Uses AI to determine ideal vibe + attire
+// Priority: OpenAI → Claude → Smart Rule-Based Fallback
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
 import { scrapeProductPage } from '@/lib/scraper';
-import Anthropic from '@anthropic-ai/sdk';
 
 export const maxDuration = 60;
 export const dynamic = 'force-dynamic';
-
-const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const VIBE_OPTIONS = [
   'rose_garden',
@@ -37,6 +35,111 @@ const ATTIRE_OPTIONS = [
   'beige_thobe_brown_bisht',
 ];
 
+// Smart rule-based fallback — no AI needed
+function smartRecommendation(product: Record<string, unknown>): { vibe: string; attire: string; reasoning: string } {
+  const text = [
+    String(product.name || ''),
+    String(product.notes || ''),
+    String(product.description || ''),
+  ].join(' ').toLowerCase();
+
+  // Floral / Rose
+  if (/ورد|rose|floral|jasmine|ياسمين|بتلة|زهر/.test(text)) {
+    return { vibe: 'rose_garden', attire: 'black_suit_gold_details', reasoning: 'Floral notes → rose garden setting' };
+  }
+  // Oud / Oriental / Arabic
+  if (/عود|oud|oriental|شرقي|مسك|musk|بخور|incense/.test(text)) {
+    return { vibe: 'oriental_palace', attire: 'saudi_bisht', reasoning: 'Oriental oud notes → palace setting' };
+  }
+  // Fresh / Aquatic / Marine
+  if (/fresh|aqua|marine|ocean|بحر|منعش|citrus|citron|bergamot/.test(text)) {
+    return { vibe: 'ocean_breeze', attire: 'navy_suit', reasoning: 'Fresh aquatic notes → ocean setting' };
+  }
+  // Woody / Tobacco / Leather
+  if (/wood|cedar|sandalwood|tobacco|leather|خشب|صندل/.test(text)) {
+    return { vibe: 'classic_library', attire: 'charcoal_suit_gold_tie', reasoning: 'Woody notes → classic library' };
+  }
+  // Vanilla / Amber / Sweet
+  if (/vanilla|amber|عنبر|فانيليا|sweet|warm|musk|tonka/.test(text)) {
+    return { vibe: 'winter_cabin', attire: 'beige_thobe_brown_bisht', reasoning: 'Warm sweet notes → cozy cabin' };
+  }
+  // Sport / Green / Citrus
+  if (/sport|green|citrus|lime|lemon|limon|أخضر/.test(text)) {
+    return { vibe: 'modern_corporate', attire: 'navy_suit', reasoning: 'Fresh citrus notes → modern corporate' };
+  }
+  // Default: Royal luxury
+  return { vibe: 'royal_luxury', attire: 'white_thobe_black_bisht', reasoning: 'Luxury perfume → royal palace setting' };
+}
+
+async function analyzeWithOpenAI(product: Record<string, unknown>): Promise<{ vibe: string; attire: string; reasoning: string }> {
+  const OpenAI = (await import('openai')).default;
+  const openai = new OpenAI({
+    apiKey: process.env.OPENAI_API_KEY,
+    baseURL: process.env.OPENAI_BASE_URL || undefined,
+  });
+
+  const prompt = `You are a luxury perfume marketing director. Analyze this perfume and select the best vibe and attire for a 3D CGI promotional image.
+
+Product: ${JSON.stringify(product, null, 2)}
+
+Available vibes: ${VIBE_OPTIONS.join(', ')}
+Available attires: ${ATTIRE_OPTIONS.join(', ')}
+
+Guide:
+- Floral/Rose → rose_garden + black_suit_gold_details
+- Oud/oriental → oriental_palace + saudi_bisht
+- Fresh/aquatic → ocean_breeze + navy_suit
+- Woody/tobacco → classic_library + charcoal_suit_gold_tie
+- Vanilla/amber → winter_cabin + beige_thobe_brown_bisht
+- Luxury/royal → royal_luxury + white_thobe_black_bisht
+
+Respond ONLY with valid JSON (no markdown):
+{"vibe":"<key>","attire":"<key>","reasoning":"<one sentence>"}`;
+
+  const response = await openai.chat.completions.create({
+    model: 'gpt-4.1-mini',
+    max_tokens: 200,
+    temperature: 0.3,
+    messages: [
+      { role: 'system', content: 'Respond only with valid JSON, no markdown.' },
+      { role: 'user', content: prompt },
+    ],
+  });
+
+  const raw = response.choices[0]?.message?.content?.trim() ?? '{}';
+  const parsed = JSON.parse(raw.replace(/```json?/g, '').replace(/```/g, '').trim());
+  return {
+    vibe: VIBE_OPTIONS.includes(parsed.vibe) ? parsed.vibe : 'royal_luxury',
+    attire: ATTIRE_OPTIONS.includes(parsed.attire) ? parsed.attire : 'white_thobe_black_bisht',
+    reasoning: parsed.reasoning || '',
+  };
+}
+
+async function analyzeWithClaude(product: Record<string, unknown>): Promise<{ vibe: string; attire: string; reasoning: string }> {
+  const Anthropic = (await import('@anthropic-ai/sdk')).default;
+  const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
+
+  const prompt = `Analyze this perfume and select vibe + attire for a 3D CGI image.
+Product: ${JSON.stringify(product, null, 2)}
+Vibes: ${VIBE_OPTIONS.join(', ')}
+Attires: ${ATTIRE_OPTIONS.join(', ')}
+Respond ONLY with JSON: {"vibe":"<key>","attire":"<key>","reasoning":"<sentence>"}`;
+
+  const response = await anthropic.messages.create({
+    model: 'claude-3-5-haiku-20241022',
+    max_tokens: 200,
+    messages: [{ role: 'user', content: prompt }],
+  });
+
+  const raw = response.content[0].type === 'text' ? response.content[0].text.trim() : '{}';
+  const parsed = JSON.parse(raw.replace(/```json?/g, '').replace(/```/g, '').trim());
+  return {
+    vibe: VIBE_OPTIONS.includes(parsed.vibe) ? parsed.vibe : 'royal_luxury',
+    attire: ATTIRE_OPTIONS.includes(parsed.attire) ? parsed.attire : 'white_thobe_black_bisht',
+    reasoning: parsed.reasoning || '',
+  };
+}
+
 export async function POST(request: NextRequest) {
   try {
     const { url } = await request.json();
@@ -45,57 +148,41 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'url is required.' }, { status: 400 });
     }
 
-    // ── Step 1: Scrape the product page ──────────────────────────────────────────
+    // ── Step 1: Scrape the product page ──────────────────────────────────────
     const product = await scrapeProductPage(url);
 
-    // ── Step 2: Claude analyzes the product and recommends vibe + attire ─────────
-    const claudePrompt = `You are a luxury perfume brand marketing director with 20 years of experience.
+    // ── Step 2: AI recommends vibe + attire (with fallback chain) ─────────────
+    let recommendation = smartRecommendation(product as Record<string, unknown>);
+    let aiSource = 'rule-based';
 
-Analyze this perfume product data and select the most visually compelling and commercially effective vibe and attire combination for a 3D CGI promotional image featuring an Arab male brand ambassador.
-
-Product Data:
-${JSON.stringify(product, null, 2)}
-
-Available vibe options: ${VIBE_OPTIONS.join(', ')}
-Available attire options: ${ATTIRE_OPTIONS.join(', ')}
-
-Reasoning guide:
-- Floral/Rose notes → rose_garden + black_suit_gold_details
-- Oud/oriental notes → oriental_palace or desert_sunset or majlis + saudi_bisht
-- Fresh/aquatic/marine → ocean_breeze + navy_suit
-- Woody/tobacco/leather → classic_library + charcoal_suit_gold_tie or saudi_bisht
-- Citrus/green/sport → modern_corporate + navy_suit
-- Vanilla/amber/warm → winter_cabin + beige_thobe_brown_bisht
-- Ultra-luxury/royal → royal_luxury + saudi_bisht
-- Minimalist/designer → modern_minimalist + white_thobe_only or charcoal_suit_gold_tie
-
-Respond ONLY with a valid JSON object (no markdown fences, no extra text):
-{
-  "vibe": "<vibe_key>",
-  "attire": "<attire_key>",
-  "reasoning": "<one concise English sentence explaining the choice>"
-}`;
-
-    const analysisResponse = await anthropic.messages.create({
-      model: 'claude-opus-4-5',
-      max_tokens: 300,
-      messages: [{ role: 'user', content: claudePrompt }],
-    });
-
-    const rawText =
-      analysisResponse.content[0].type === 'text' ? analysisResponse.content[0].text.trim() : '{}';
-
-    let recommendation = { vibe: 'royal_luxury', attire: 'saudi_bisht', reasoning: '' };
-    try {
-      recommendation = JSON.parse(rawText);
-      // Validate that the returned values are in the allowed lists
-      if (!VIBE_OPTIONS.includes(recommendation.vibe)) recommendation.vibe = 'royal_luxury';
-      if (!ATTIRE_OPTIONS.includes(recommendation.attire)) recommendation.attire = 'saudi_bisht';
-    } catch {
-      console.warn('[/api/scrape] Failed to parse Claude recommendation, using defaults.');
+    // Try OpenAI first
+    if (process.env.OPENAI_API_KEY) {
+      try {
+        recommendation = await analyzeWithOpenAI(product as Record<string, unknown>);
+        aiSource = 'openai';
+        console.log('[/api/scrape] Used OpenAI for recommendation');
+      } catch (e: unknown) {
+        console.warn('[/api/scrape] OpenAI failed:', e instanceof Error ? e.message : e);
+      }
     }
 
-    return NextResponse.json({ product, recommendation }, { status: 200 });
+    // Try Claude if OpenAI failed
+    if (aiSource === 'rule-based' && process.env.ANTHROPIC_API_KEY) {
+      try {
+        recommendation = await analyzeWithClaude(product as Record<string, unknown>);
+        aiSource = 'claude';
+        console.log('[/api/scrape] Used Claude for recommendation');
+      } catch (e: unknown) {
+        console.warn('[/api/scrape] Claude failed:', e instanceof Error ? e.message : e);
+      }
+    }
+
+    if (aiSource === 'rule-based') {
+      console.log('[/api/scrape] Using rule-based recommendation');
+    }
+
+    return NextResponse.json({ product, recommendation, aiSource }, { status: 200 });
+
   } catch (error: unknown) {
     console.error('[/api/scrape] Error:', error);
     const message = error instanceof Error ? error.message : 'Scraping failed.';
