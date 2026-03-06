@@ -264,11 +264,19 @@ export default function HomePage() {
               <OutputGrid images={generationResult.images} perfumeName={perfumeData?.name ?? ''} />
             )}
 
-            {activeTab === 'captions' && captionResult && (
-              <CaptionDisplay
-                instagram={(captionResult.captions as Record<string, string>).instagram ?? ''}
-                twitter={(captionResult.captions as Record<string, string>).twitter ?? ''}
-              />
+            {activeTab === 'captions' && (
+              captionResult ? (
+                <CaptionDisplay
+                  instagram={(captionResult.captions as Record<string, string>).instagram ?? ''}
+                  twitter={(captionResult.captions as Record<string, string>).twitter ?? ''}
+                  tiktok={(captionResult.captions as Record<string, string>).tiktok}
+                  snapchat={(captionResult.captions as Record<string, string>).snapchat}
+                />
+              ) : (
+                <div className="glass-card p-8 text-center text-[var(--text-muted)]">
+                  <p>جاري تحضير الكابشنات...</p>
+                </div>
+              )
             )}
 
             {activeTab === 'videos' && scenarios && (
