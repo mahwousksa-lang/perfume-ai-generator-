@@ -42,8 +42,13 @@ function getBottleDescription(name: string, brand: string): string {
 }
 
 // ─── SCENE / BACKGROUND ──────────────────────────────────────────────────────
-function getSceneDescription(notes?: string[]): string {
-  const notesList = notes || [];
+function getSceneDescription(notes?: string | string[]): string {
+  // Support both string and string[] for notes
+  const notesList: string[] = Array.isArray(notes)
+    ? notes
+    : typeof notes === 'string' && notes.trim()
+    ? notes.split(/[,،•\n]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
   const hasFloral = notesList.some(n => /rose|jasmine|floral|flower|ورد|ياسمين|زهر/i.test(n));
   const hasOud = notesList.some(n => /oud|wood|sandalwood|عود|خشب|صندل/i.test(n));
   const hasOcean = notesList.some(n => /ocean|sea|marine|aqua|بحر|مائي/i.test(n));
@@ -66,13 +71,19 @@ function getSceneDescription(notes?: string[]): string {
 }
 
 // ─── FLOATING SCENT EFFECTS ───────────────────────────────────────────────────
-function getScentEffects(notes?: string[]): string {
-  if (!notes || notes.length === 0) {
+function getScentEffects(notes?: string | string[]): string {
+  // Support both string and string[] for notes
+  const notesList: string[] = Array.isArray(notes)
+    ? notes
+    : typeof notes === 'string' && notes.trim()
+    ? notes.split(/[,،•\n]+/).map((s) => s.trim()).filter(Boolean)
+    : [];
+  if (!notesList || notesList.length === 0) {
     return `soft golden sparkles and pink smoke wisps swirling magically around the character`;
   }
 
   const effects: string[] = [];
-  for (const note of notes.slice(0, 5)) {
+  for (const note of notesList.slice(0, 5)) {
     const n = note.toLowerCase();
     if (/rose|ورد/.test(n)) effects.push('floating pink rose petals');
     else if (/jasmine|ياسمين/.test(n)) effects.push('floating white jasmine flowers');
@@ -91,7 +102,7 @@ function getScentEffects(notes?: string[]): string {
 // ─── MAIN PROMPT BUILDER ──────────────────────────────────────────────────────
 export function buildPrompt(request: GenerationRequest): string {
   const { perfumeData, vibe = '', attire = '' } = request;
-  const { name = '', brand = '', notes = [] } = perfumeData || {};
+  const { name = '', brand = '', notes } = perfumeData || {};
 
   const bottleDesc = getBottleDescription(name, brand);
   const sceneDesc = getSceneDescription(notes);
