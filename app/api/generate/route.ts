@@ -1,23 +1,20 @@
 // ============================================================
 // app/api/generate/route.ts
-// Mahwous Perfume AI — Hybrid Image Generation Pipeline v4
+// Mahwous Perfume AI — Hybrid Image Generation Pipeline v5
 //
-// KEY FIX: Product bottle reference image is now used correctly:
-//   - FLUX img2img strength lowered to 0.35 (preserves bottle shape)
-//   - Gemini receives bottle image FIRST (highest priority)
-//   - Prompts heavily emphasize exact bottle reproduction
+// NEW STRATEGY (v5): Separation of concerns
+//   - FLUX LoRA: generates CHARACTER ONLY (text-to-image, NO bottle ref)
+//   - Gemini: receives FLUX character + REAL bottle photo → combines them
+//   - This ensures the bottle is NEVER distorted by FLUX img2img
 //
-// PIPELINE (3-Step):
-//   Step 1: Upload product image to fal.ai storage (if provided)
-//   Step 2: FLUX LoRA Image-to-Image (fal-ai/flux-lora/image-to-image)
-//     → Uses MAHWOUS_MAN LoRA for stable character face
-//     → Uses product image as reference (image_url) with LOW strength
-//     → strength: 0.35 (PRESERVES bottle shape from reference)
-//   Step 3: Gemini 2.5 Flash Image (Nano Banana style)
-//     → Receives bottle image FIRST (priority) + FLUX output second
-//     → Strict instructions to reproduce bottle IDENTICALLY
+// PIPELINE:
+//   Step 1: FLUX LoRA text-to-image → character with generic bottle pose
+//   Step 2: Gemini receives 3 inputs:
+//     [1] Real bottle photo (user upload or scraped) — HIGHEST PRIORITY
+//     [2] FLUX character image — for face/identity reference
+//     [3] Text prompt — strict instructions to use EXACT bottle from [1]
 //
-// FALLBACK: If FLUX fails → Gemini only (with product image reference)
+// FALLBACK: If FLUX fails → Gemini only (with bottle photo)
 // ============================================================
 
 import { NextRequest, NextResponse } from 'next/server';
@@ -34,9 +31,7 @@ const MAHWOUS_TRIGGER = 'MAHWOUS_MAN';
 
 const FAL_KEY_ENV = () => process.env.FAL_KEY ?? '';
 const FAL_QUEUE_BASE = 'https://queue.fal.run';
-const FAL_MODEL_IMG2IMG = 'fal-ai/flux-lora/image-to-image';
 const FAL_MODEL_T2I = 'fal-ai/flux-lora';
-const FAL_STORAGE_URL = 'https://rest.fal.run/storage/upload/initiate';
 
 // ─── Aspect ratio configurations ─────────────────────────────────────────────
 const ASPECT_CONFIGS = [
@@ -65,58 +60,6 @@ const ASPECT_CONFIGS = [
     aspectHint: 'HORIZONTAL LANDSCAPE (16:9 wide format, wider than tall)',
   },
 ];
-
-// ─── Upload image to fal.ai storage ──────────────────────────────────────────
-async function uploadImageToFal(imageBase64: string): Promise<string | null> {
-  const falKey = FAL_KEY_ENV();
-  if (!falKey) return null;
-
-  try {
-    // Strip data URI prefix and detect mime type
-    const match = imageBase64.match(/^data:(image\/\w+);base64,(.+)$/);
-    const mimeType = match ? match[1] : 'image/jpeg';
-    const base64Data = match ? match[2] : imageBase64;
-    const buffer = Buffer.from(base64Data, 'base64');
-
-    // Initiate upload
-    const initiateRes = await fetch(FAL_STORAGE_URL, {
-      method: 'POST',
-      headers: {
-        Authorization: `Key ${falKey}`,
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify({
-        content_type: mimeType,
-        file_size: buffer.length,
-      }),
-    });
-
-    if (!initiateRes.ok) {
-      console.warn('[upload] fal.ai initiate upload failed:', initiateRes.status);
-      return null;
-    }
-
-    const { upload_url, file_url } = await initiateRes.json();
-
-    // Upload the file
-    const uploadRes = await fetch(upload_url, {
-      method: 'PUT',
-      headers: { 'Content-Type': mimeType },
-      body: buffer,
-    });
-
-    if (!uploadRes.ok) {
-      console.warn('[upload] fal.ai PUT upload failed:', uploadRes.status);
-      return null;
-    }
-
-    console.log('[upload] fal.ai image uploaded:', file_url);
-    return file_url as string;
-  } catch (err) {
-    console.warn('[upload] fal.ai upload error:', err);
-    return null;
-  }
-}
 
 // ─── Fetch image URL and convert to base64 ───────────────────────────────────
 async function fetchImageAsBase64(url: string): Promise<{ base64: string; mimeType: string } | null> {
@@ -195,17 +138,16 @@ async function pollFalUntilDone(model: string, requestId: string, timeoutMs = 12
   throw new Error('fal.ai generation timed out after 120 seconds');
 }
 
-// ─── Step 1: FLUX LoRA (with product image as reference) ─────────────────────
-async function generateWithFluxLora(params: {
+// ─── Step 1: FLUX LoRA TEXT-TO-IMAGE (character ONLY, NO bottle reference) ───
+// FLUX generates the MAHWOUS_MAN character holding a generic bottle pose.
+// The REAL bottle will be added by Gemini in Step 2.
+async function generateCharacterWithFlux(params: {
   prompt: string;
   negativePrompt: string;
   loraPath: string;
   imageSize: { width: number; height: number };
-  productImageUrl: string | null;   // fal.ai hosted URL of product bottle
 }): Promise<string> {
-  const { prompt, negativePrompt, loraPath, imageSize, productImageUrl } = params;
-
-  const model = productImageUrl ? FAL_MODEL_IMG2IMG : FAL_MODEL_T2I;
+  const { prompt, negativePrompt, loraPath, imageSize } = params;
 
   const input: Record<string, unknown> = {
     prompt,
@@ -219,59 +161,63 @@ async function generateWithFluxLora(params: {
     loras: [{ path: loraPath.trim(), scale: 1.0 }],
   };
 
-  // Add image reference for img2img mode
-  // CRITICAL: strength 0.35 = 65% of the original image is PRESERVED
-  // This means the bottle shape from the reference photo stays mostly intact
-  // while FLUX adds the MAHWOUS_MAN character around it
-  if (productImageUrl) {
-    input.image_url = productImageUrl;
-    input.strength = 0.35;
-  }
-
-  const requestId = await submitToFal(model, input);
-  return await pollFalUntilDone(model, requestId);
+  // NO image_url, NO strength — pure text-to-image for character generation
+  const requestId = await submitToFal(FAL_MODEL_T2I, input);
+  return await pollFalUntilDone(FAL_MODEL_T2I, requestId);
 }
 
-// ─── Step 2: Gemini Nano Banana Enhancement ───────────────────────────────────
-async function enhanceWithGemini(params: {
-  fluxImageUrl: string;
-  enhancePrompt: string;
-  bottleImageBase64?: string;       // user-provided bottle base64
-  bottleImageUrl?: string;          // product image URL for additional reference
+// ─── Step 2: Gemini combines character + REAL bottle photo ───────────────────
+// Gemini receives:
+//   [1] Real bottle photo → must reproduce EXACTLY
+//   [2] FLUX character → must keep same face/identity
+//   [3] Text prompt → strict instructions
+async function combineWithGemini(params: {
+  fluxImageUrl: string;              // FLUX character image URL
+  enhancePrompt: string;             // Gemini text prompt
+  bottleImageBase64?: string;        // user-uploaded bottle (base64)
+  bottleImageUrl?: string;           // scraped bottle URL
 }): Promise<string | null> {
   const { fluxImageUrl, enhancePrompt, bottleImageBase64, bottleImageUrl } = params;
   const apiKey = process.env.GOOGLE_GENERATIVE_AI_API_KEY;
   if (!apiKey) return null;
 
-  // Fetch FLUX result image
+  // Fetch FLUX character image
   const fluxImg = await fetchImageAsBase64(fluxImageUrl);
   if (!fluxImg) {
-    console.warn('[gemini] Could not fetch FLUX image');
+    console.warn('[gemini] Could not fetch FLUX character image');
     return null;
   }
 
-  // Build parts: BOTTLE REFERENCE FIRST (highest priority), then FLUX image, then prompt
-  // Order matters! Gemini gives more attention to earlier images
+  // Build parts in STRICT order:
+  // [1] BOTTLE PHOTO FIRST (highest priority — Gemini focuses most on first image)
+  // [2] FLUX CHARACTER second (face reference)
+  // [3] TEXT PROMPT last
   const parts: Array<{ text: string } | { inlineData: { mimeType: string; data: string } }> = [];
 
-  // FIRST: Add bottle reference image (HIGHEST PRIORITY — must be first)
+  // [1] Add REAL bottle photo
   let hasBottleRef = false;
   if (bottleImageBase64) {
     const base64Data = bottleImageBase64.replace(/^data:image\/\w+;base64,/, '');
     parts.push({ inlineData: { mimeType: 'image/jpeg', data: base64Data } });
     hasBottleRef = true;
+    console.log('[gemini] Added user-uploaded bottle image as IMAGE 1');
   } else if (bottleImageUrl) {
     const bottleImg = await fetchImageAsBase64(bottleImageUrl);
     if (bottleImg) {
       parts.push({ inlineData: { mimeType: bottleImg.mimeType, data: bottleImg.base64 } });
       hasBottleRef = true;
+      console.log('[gemini] Added scraped bottle image as IMAGE 1');
     }
   }
 
-  // SECOND: Add FLUX output (character reference)
+  if (!hasBottleRef) {
+    console.log('[gemini] No bottle reference available — character image only');
+  }
+
+  // [2] Add FLUX character image
   parts.push({ inlineData: { mimeType: fluxImg.mimeType, data: fluxImg.base64 } });
 
-  // THIRD: Add the text prompt
+  // [3] Add text prompt
   parts.push({ text: enhancePrompt });
 
   try {
@@ -289,7 +235,7 @@ async function enhanceWithGemini(params: {
 
     if (!response.ok) {
       const errText = await response.text();
-      console.warn(`[gemini] Enhancement error ${response.status}: ${errText}`);
+      console.warn(`[gemini] Combine error ${response.status}: ${errText}`);
       return null;
     }
 
@@ -299,12 +245,12 @@ async function enhanceWithGemini(params: {
     }
     return null;
   } catch (err) {
-    console.warn('[gemini] Enhancement failed:', err);
+    console.warn('[gemini] Combine failed:', err);
     return null;
   }
 }
 
-// ─── Gemini-only fallback ─────────────────────────────────────────────────────
+// ─── Gemini-only fallback (no FLUX) ──────────────────────────────────────────
 async function generateWithGeminiOnly(params: {
   prompt: string;
   bottleImageBase64?: string;
@@ -357,7 +303,6 @@ async function generateWithGeminiOnly(params: {
 async function generateFormat(
   request: GenerationRequest,
   ac: typeof ASPECT_CONFIGS[0],
-  productFalUrl: string | null,     // fal.ai hosted product image URL
 ): Promise<{
   format: string;
   label: string;
@@ -371,9 +316,9 @@ async function generateFormat(
   const loraPath = request.loraPath?.trim() || MAHWOUS_LORA_URL;
   const triggerWord = request.loraTriggerWord?.trim() || MAHWOUS_TRIGGER;
 
-  const hasUserBottle = !!(bottleImageBase64);
-  const hasAnyBottleRef = !!(bottleImageBase64 || productFalUrl || perfumeData.imageUrl);
+  const hasBottleRef = !!(bottleImageBase64 || perfumeData.imageUrl);
 
+  // FLUX prompt: character ONLY, holding a generic bottle (no specific bottle details)
   const fluxPrompt = buildFluxPrompt({
     perfumeData,
     vibe,
@@ -381,40 +326,40 @@ async function generateFormat(
     aspectHint: ac.aspectHint,
     bottleDescription,
     loraTriggerWord: triggerWord,
-    hasBottleReference: hasUserBottle,
+    hasBottleReference: false, // ALWAYS false — FLUX never gets the bottle image
   });
   const negativePrompt = buildNegativePrompt();
 
+  // Gemini prompt: strict instructions to use the REAL bottle from photo
   const geminiPrompt = buildGeminiEnhancePrompt({
     perfumeData,
     vibe,
     attire,
     aspectHint: ac.aspectHint,
     bottleDescription,
-    hasBottleReference: hasAnyBottleRef,
+    hasBottleReference: hasBottleRef,
   });
 
   let finalUrl: string | null = null;
   let pipeline = 'none';
 
-  // ── Step 1: FLUX LoRA (character + bottle reference) ─────────────────────────
+  // ── Step 1: FLUX LoRA text-to-image (CHARACTER ONLY) ─────────────────────────
   if (FAL_KEY_ENV()) {
     try {
-      console.log(`[generate] FLUX LoRA (${ac.format}) productRef: ${productFalUrl ? 'yes' : 'no'}`);
-      const fluxUrl = await generateWithFluxLora({
+      console.log(`[generate] FLUX LoRA t2i CHARACTER ONLY (${ac.format})`);
+      const fluxUrl = await generateCharacterWithFlux({
         prompt: fluxPrompt,
         negativePrompt,
         loraPath,
         imageSize: ac.imageSize,
-        productImageUrl: productFalUrl,
       });
-      pipeline = productFalUrl ? 'flux_lora_img2img' : 'flux_lora_t2i';
-      console.log(`[generate] FLUX done (${ac.format}): ${fluxUrl}`);
+      pipeline = 'flux_lora_t2i';
+      console.log(`[generate] FLUX character done (${ac.format}): ${fluxUrl}`);
 
-      // ── Step 2: Gemini enhancement (Nano Banana + bottle reference) ───────────
+      // ── Step 2: Gemini combines character + REAL bottle photo ─────────────────
       if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-        console.log(`[generate] Gemini enhance (${ac.format})`);
-        const geminiBase64 = await enhanceWithGemini({
+        console.log(`[generate] Gemini combine character + bottle (${ac.format})`);
+        const geminiBase64 = await combineWithGemini({
           fluxImageUrl: fluxUrl,
           enhancePrompt: geminiPrompt,
           bottleImageBase64,
@@ -422,21 +367,22 @@ async function generateFormat(
         });
         if (geminiBase64) {
           finalUrl = `data:image/png;base64,${geminiBase64}`;
-          pipeline = productFalUrl ? 'flux_lora_img2img+gemini' : 'flux_lora_t2i+gemini';
+          pipeline = 'flux_t2i+gemini_combine';
         } else {
+          // Gemini failed — use FLUX output as-is
           finalUrl = fluxUrl;
-          pipeline += '_only';
+          pipeline = 'flux_t2i_only';
         }
       } else {
         finalUrl = fluxUrl;
-        pipeline += '_only';
+        pipeline = 'flux_t2i_only';
       }
     } catch (err) {
       console.warn(`[generate] FLUX LoRA failed (${ac.format}):`, err);
     }
   }
 
-  // ── Fallback: Gemini only ─────────────────────────────────────────────────────
+  // ── Fallback: Gemini only (no FLUX) ───────────────────────────────────────────
   if (!finalUrl && process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
     console.log(`[generate] Gemini only fallback (${ac.format})`);
     const geminiBase64 = await generateWithGeminiOnly({
@@ -480,27 +426,11 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // ── Upload product image to fal.ai storage (once, reused for all 3 formats) ─
-    let productFalUrl: string | null = null;
-    if (FAL_KEY_ENV()) {
-      // Priority: user-provided base64 > product imageUrl
-      if (body.bottleImageBase64) {
-        console.log('[generate] Uploading user-provided bottle image to fal.ai...');
-        productFalUrl = await uploadImageToFal(body.bottleImageBase64);
-      } else if (body.perfumeData?.imageUrl) {
-        console.log('[generate] Fetching product image URL and uploading to fal.ai...');
-        const imgData = await fetchImageAsBase64(body.perfumeData.imageUrl);
-        if (imgData) {
-          const dataUri = `data:${imgData.mimeType};base64,${imgData.base64}`;
-          productFalUrl = await uploadImageToFal(dataUri);
-        }
-      }
-      console.log('[generate] Product fal.ai URL:', productFalUrl ?? 'none (text-to-image mode)');
-    }
-
     // Generate all 3 formats in parallel
+    // NOTE: No more uploading bottle to fal.ai — FLUX doesn't need it anymore
+    // The bottle image goes DIRECTLY to Gemini as base64
     const results = await Promise.all(
-      ASPECT_CONFIGS.map((ac) => generateFormat(body, ac, productFalUrl))
+      ASPECT_CONFIGS.map((ac) => generateFormat(body, ac))
     );
 
     const completedImages = results.filter((r) => r.status === 'COMPLETED' && r.url);

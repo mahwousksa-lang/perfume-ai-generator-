@@ -1,7 +1,6 @@
 // ============================================================
 // lib/promptEngine.ts  — Mahwous Perfume AI Campaign Generator
-// Hybrid Pipeline: FLUX LoRA (character stability) + Gemini (Nano Banana quality)
-// v4: STRICT bottle reference enforcement
+// Pipeline v5: FLUX generates CHARACTER ONLY → Gemini adds REAL bottle
 // ============================================================
 // @ts-nocheck
 
@@ -41,7 +40,7 @@ function getSceneDescription(vibe: string, notes?: string | string[]): string {
 
   if (vibe && vibeMap[vibe]) return vibeMap[vibe];
 
-  if (hasOud) return 'opulent Arabian royal palace interior, dark wood paneling with golden geometric Islamic patterns, warm amber lighting from ornate brass lanterns, rich Persian carpets, incense smoke rising gently, golden Arabic coffee pot dallah on a side table';
+  if (hasOud) return 'opulent Arabian royal palace interior, dark wood paneling with golden geometric Islamic patterns, warm amber lighting from ornate brass lanterns, rich Persian carpets, incense smoke rising gently';
   if (hasFloral) return 'luxurious marble palace room with tall arched windows, deep emerald green velvet curtains, pink roses and white flowers visible through the window, warm golden sunset light streaming in';
   if (hasOcean) return 'modern luxury penthouse with floor-to-ceiling ocean view windows, crystal blue sea visible in the background, white marble interior with silver accents, cool blue ambient lighting';
   if (hasCitrus) return 'bright modern luxury terrace overlooking Mediterranean sea, white marble balustrade, lemon trees in background, warm Mediterranean sunlight';
@@ -66,7 +65,9 @@ His expression is confident and charming, smiling warmly at the camera.`;
   return CHARACTER_BASE;
 }
 
-// ─── FLUX LoRA PROMPT (trigger word FIRST) ────────────────────────────────────
+// ─── FLUX LoRA PROMPT (CHARACTER ONLY — no specific bottle) ──────────────────
+// FLUX generates the character holding a GENERIC luxury perfume bottle.
+// The REAL bottle will be swapped in by Gemini in Step 2.
 export function buildFluxPrompt(params: {
   perfumeData: { name: string; brand: string; notes?: string | string[]; description?: string };
   vibe?: string;
@@ -76,22 +77,22 @@ export function buildFluxPrompt(params: {
   loraTriggerWord?: string;
   hasBottleReference?: boolean;
 }): string {
-  const { perfumeData, vibe = '', attire = '', aspectHint = '', bottleDescription, loraTriggerWord = 'MAHWOUS_MAN', hasBottleReference = false } = params;
-  const { name = '', brand = '', notes } = perfumeData;
+  const { perfumeData, vibe = '', attire = '', aspectHint = '', loraTriggerWord = 'MAHWOUS_MAN' } = params;
+  const { notes } = perfumeData;
 
   const sceneDesc = getSceneDescription(vibe, notes);
   const characterDesc = getCharacterDescription(attire);
 
-  // When we have a bottle reference image, tell FLUX to preserve the bottle from the reference
-  const bottleInstruction = hasBottleReference
-    ? `holding the EXACT perfume bottle from the reference image (preserve the bottle shape, cap, label, and colors EXACTLY as shown in the input image)`
-    : `holding a luxury ${brand} ${name} perfume bottle`;
-
-  // CRITICAL: trigger word MUST be first for LoRA activation
-  return `${loraTriggerWord}, ${characterDesc.replace(/\n/g, ' ')}, ${bottleInstruction}, background: ${sceneDesc}, photorealistic 3D Pixar/Disney animation style, cinematic lighting, 4K quality${aspectHint ? `, ${aspectHint}` : ''}`;
+  // IMPORTANT: We tell FLUX to generate a GENERIC elegant perfume bottle.
+  // We do NOT describe the specific bottle — Gemini will replace it with the real one.
+  return `${loraTriggerWord}, ${characterDesc.replace(/\n/g, ' ')}, holding an elegant luxury perfume bottle with his right hand extended toward camera presenting it proudly, the bottle is clearly visible and prominently featured, background: ${sceneDesc}, photorealistic 3D Pixar/Disney animation style, cinematic lighting, 4K quality${aspectHint ? `, ${aspectHint}` : ''}`;
 }
 
-// ─── GEMINI ENHANCEMENT PROMPT (Nano Banana style) ───────────────────────────
+// ─── GEMINI PROMPT: Combine character + REAL bottle ──────────────────────────
+// This is the KEY prompt. Gemini receives:
+//   IMAGE 1: Real bottle photo
+//   IMAGE 2: FLUX character
+// And must output: character holding the EXACT real bottle
 export function buildGeminiEnhancePrompt(params: {
   perfumeData: { name: string; brand: string; notes?: string | string[]; description?: string };
   vibe?: string;
@@ -108,64 +109,75 @@ export function buildGeminiEnhancePrompt(params: {
 
   const { hasBottleReference } = params;
 
-  // When bottle reference is available, use STRICT instructions
+  // ── WITH bottle reference: strict combination instructions ──────────────────
   if (hasBottleReference) {
-    return `You are given TWO reference images and a task:
+    return `You have TWO reference images. Your task is to CREATE A SINGLE NEW IMAGE that combines elements from both.
 
-IMAGE 1 (FIRST IMAGE): This is the REAL product photo of the perfume bottle "${name}" by ${brand}. 
-YOU MUST COPY THIS BOTTLE EXACTLY — same shape, same proportions, same cap design, same label, same colors, same material appearance. 
-DO NOT invent a different bottle. DO NOT change the bottle shape. The bottle in your output MUST be a pixel-perfect 3D recreation of this exact bottle.
+=== IMAGE 1 (FIRST IMAGE) — THE REAL PERFUME BOTTLE ===
+This is a REAL product photograph of the perfume "${name}" by ${brand}.
+You MUST place THIS EXACT BOTTLE in the character's hand.
+- Copy the EXACT shape of this bottle (cylindrical, rectangular, round — whatever it is)
+- Copy the EXACT cap/lid design
+- Copy the EXACT label, text, and decorations on the bottle
+- Copy the EXACT colors and material (gold, glass, matte, glossy — match it precisely)
+- Copy the EXACT proportions (tall/short, wide/narrow — match it precisely)
+- DO NOT simplify, stylize, or change ANY detail of this bottle
+- The bottle should look like a 3D rendered version of this EXACT photo
 
-IMAGE 2 (SECOND IMAGE): This is the character generated by FLUX LoRA. Keep the EXACT same face, beard, hair, and identity from this image. Do NOT change the character's face.
+=== IMAGE 2 (SECOND IMAGE) — THE CHARACTER ===
+This is a 3D animated character (Pixar/Disney style).
+- Keep the EXACT same face, beard, hair style, and facial features
+- Keep the same clothing style and colors
+- Keep the same confident, charming expression
 
-YOUR TASK: Create a single image${aspectHint ? ` in ${aspectHint}` : ''} combining:
-
-CHARACTER: ${characterDesc}
-The character is holding the perfume bottle (from IMAGE 1) naturally with his right hand raised and extended slightly toward the camera, presenting it proudly. The bottle is clearly visible and prominently featured.
+=== YOUR OUTPUT ===
+Create a single image${aspectHint ? ` in ${aspectHint}` : ''} showing:
+- The CHARACTER from Image 2 (same face, same identity, same clothing)
+- HOLDING the EXACT BOTTLE from Image 1 (same shape, same cap, same label, same colors)
+- He holds the bottle naturally with his right hand, extended slightly toward camera
+- The bottle is clearly visible and prominently featured
 
 BACKGROUND: ${sceneDesc}
-${notes ? `\nThe perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
+${notes ? `The perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
 
 STYLE:
-- Photorealistic 3D animation quality (like Pixar/Disney movies — Nano Banana style)
-- Cinematic professional lighting with dramatic shadows and highlights
-- 4K ultra-high resolution, sharp focus throughout
-- Rich colors, global illumination, subsurface scattering on skin
-- Professional perfume marketing campaign quality
+- 3D Pixar/Disney animation quality (Nano Banana style)
+- Cinematic lighting, 4K resolution
+- The bottle must be rendered as a photorealistic 3D object matching Image 1 EXACTLY
 - No text overlays, no watermarks
 
-ABSOLUTE RULES (DO NOT VIOLATE):
-1. The perfume bottle MUST be an EXACT 3D copy of IMAGE 1 — same shape, same cap, same label, same proportions, same colors. This is NON-NEGOTIABLE.
-2. The character's face MUST match IMAGE 2 exactly.
-3. The bottle must NOT be replaced with a generic or different bottle.
-4. If you cannot reproduce the exact bottle, still use the closest possible approximation of IMAGE 1.`;
+=== CRITICAL RULES (VIOLATION = FAILURE) ===
+1. The bottle MUST be the EXACT same bottle from Image 1 — same shape, same cap, same label, same everything
+2. DO NOT generate a generic or different bottle
+3. DO NOT change the bottle's shape, proportions, or design in any way
+4. The character's face MUST match Image 2
+5. If the bottle in Image 1 is cylindrical/tall → the output bottle MUST be cylindrical/tall
+6. If the bottle in Image 1 is rectangular/square → the output bottle MUST be rectangular/square
+7. The bottle label text and decorations must match Image 1`;
   }
 
-  // Fallback: no bottle reference available
+  // ── WITHOUT bottle reference: generic generation ────────────────────────────
   const bottleName = `${brand} ${name}`.trim();
-  return `Transform this image into a high-quality 3D animated Pixar/Disney CGI style image${aspectHint ? ` in ${aspectHint}` : ''}:
+  return `Create a high-quality 3D animated Pixar/Disney CGI style image${aspectHint ? ` in ${aspectHint}` : ''}:
 
-REFERENCE IMAGE (CHARACTER): The attached image shows the character. Keep the EXACT same face, features, and identity. Do NOT change the character's face.
+REFERENCE IMAGE (CHARACTER): The attached image shows the character. Keep the EXACT same face, features, and identity.
 
 CHARACTER: ${characterDesc}
 
-BOTTLE: He is holding a luxury ${bottleName} perfume bottle with elegant premium glass and the brand name "${brand}" and product name "${name}" clearly visible.
-${notes ? `\nThe perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
+BOTTLE: He is holding a luxury ${bottleName} perfume bottle with elegant premium glass and the brand name "${brand}" and product name "${name}" visible.
+${notes ? `The perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
 
-POSE: He is holding the perfume bottle naturally with his right hand raised and extended slightly toward the camera, presenting it proudly. The bottle is clearly visible and prominently featured.
+POSE: He holds the perfume bottle naturally with his right hand extended toward camera, presenting it proudly. The bottle is clearly visible.
 
 BACKGROUND: ${sceneDesc}
 
-STYLE REQUIREMENTS:
-- Photorealistic 3D animation quality (like Pixar/Disney movies — Nano Banana style)
-- Cinematic professional lighting with dramatic shadows and highlights
-- 4K ultra-high resolution, sharp focus throughout
-- Rich colors, global illumination, subsurface scattering on skin
-- Professional perfume marketing campaign quality
+STYLE:
+- 3D Pixar/Disney animation quality (Nano Banana style)
+- Cinematic lighting, 4K resolution
 - No text overlays, no watermarks`;
 }
 
-// ─── LEGACY buildGeminiPrompt (backward compatibility) ───────────────────────
+// ─── LEGACY EXPORTS (backward compatibility) ─────────────────────────────────
 export function buildGeminiPrompt(params: {
   perfumeData: { name: string; brand: string; notes?: string | string[]; description?: string };
   vibe?: string;
@@ -176,7 +188,6 @@ export function buildGeminiPrompt(params: {
   return buildGeminiEnhancePrompt(params);
 }
 
-// ─── LEGACY buildPrompt (for backward compatibility) ─────────────────────────
 export function buildPrompt(request: GenerationRequest & { loraTriggerWord?: string }): string {
   return buildFluxPrompt({
     perfumeData: request.perfumeData,
@@ -187,7 +198,6 @@ export function buildPrompt(request: GenerationRequest & { loraTriggerWord?: str
   });
 }
 
-// ─── NEGATIVE PROMPT ─────────────────────────────────────────────────────────
 export function buildNegativePrompt(): string {
   return [
     'deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy',
@@ -196,12 +206,9 @@ export function buildNegativePrompt(): string {
     'text, watermark, signature, jpeg artifacts, low quality, error, incoherent',
     'realistic human face, photorealistic skin, real person, photograph',
     'multiple characters, crowd, duplicate character',
-    'wrong bottle shape, incorrect label, blurry bottle, distorted perfume bottle',
-    'generic bottle, different bottle, square bottle when reference is round',
   ].join(', ');
 }
 
-// ─── Legacy generatePrompt ────────────────────────────────────────────────────
 export function generatePrompt(params: any): { prompt: string; negative_prompt: string } {
   const request: GenerationRequest = {
     perfumeData: {
