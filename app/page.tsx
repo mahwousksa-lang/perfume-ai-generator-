@@ -155,24 +155,8 @@ export default function HomePage() {
       };
       setPerfumeData(product);
 
-      // Step 2: Generate images
-      setLoadingStatus('جاري توليد الصور الاحترافية...');
-
-      // Convert bottle image to base64 for img2img reference
-      let bottleImageBase64: string | undefined;
-      if (product.imageUrl) {
-        try {
-          const imgRes = await fetch('/api/proxy-image', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ url: product.imageUrl }),
-          });
-          if (imgRes.ok) {
-            const imgData = await imgRes.json();
-            bottleImageBase64 = imgData.base64;
-          }
-        } catch { /* ignore, proceed without bottle reference */ }
-      }
+      // Step 2: Submit image generation to fal.ai queue (returns immediately with request IDs)
+      setLoadingStatus('جاري إرسال طلب التوليد...');
 
       const genRes = await fetch('/api/generate', {
         method: 'POST',
@@ -182,20 +166,68 @@ export default function HomePage() {
           vibe: scrapeData.recommendation.vibe,
           attire: scrapeData.recommendation.attire,
           loraPath: 'https://v3b.fal.media/files/b/0a90eba7/OiQI7NS6N3neTl50fJHcC_pytorch_lora_weights.safetensors',
-          bottleImageBase64,
         }),
       });
       if (!genRes.ok) {
         const err = await genRes.json();
-        throw new Error(err.error || 'فشل توليد الصور.');
+        throw new Error(err.error || 'فشل إرسال طلب التوليد.');
       }
-      const genData: GenerationResult = await genRes.json();
+      const genData = await genRes.json();
 
-      // Step 2b: Composite real product bottle onto generated images
-      if (product.imageUrl && genData.images && genData.images.length > 0) {
+      // Step 2b: Poll fal.ai until all images are ready (client-side polling avoids Vercel timeout)
+      let pendingImages = genData.pendingImages;
+      const promptText = genData.prompt;
+      let completedImages: Array<{ format: 'story' | 'post' | 'landscape'; label: string; dimensions: { width: number; height: number }; url: string; aspectRatio: string }> = [];
+      const maxPolls = 60; // max 60 polls × 3s = 3 minutes
+      let pollCount = 0;
+
+      while (pendingImages && pendingImages.length > 0 && pollCount < maxPolls) {
+        pollCount++;
+        const remaining = pendingImages.filter((img: { status?: string }) => img.status !== 'COMPLETED');
+        setLoadingStatus(`جاري توليد الصور... (${pollCount * 3}ث)`);
+        await new Promise((r) => setTimeout(r, 3000));
+
+        const pollRes = await fetch('/api/poll-status', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ pendingImages: remaining }),
+        });
+
+        if (!pollRes.ok) continue;
+
+        const pollData = await pollRes.json();
+
+        // Collect completed images
+        for (const result of pollData.results) {
+          if (result.status === 'COMPLETED' && result.imageUrl) {
+            const fmt = result.format as 'story' | 'post' | 'landscape';
+            completedImages.push({
+              format: fmt,
+              label: result.label,
+              dimensions: result.dimensions,
+              url: result.imageUrl,
+              aspectRatio: fmt === 'story' ? '9:16' : fmt === 'post' ? '1:1' : '16:9',
+            });
+          }
+        }
+
+        // Update pending list to only include still-pending items
+        pendingImages = pollData.results.filter(
+          (r: { status: string }) => r.status !== 'COMPLETED' && r.status !== 'FAILED'
+        );
+
+        if (pollData.allCompleted) break;
+      }
+
+      if (completedImages.length === 0) {
+        throw new Error('فشل توليد الصور. يرجى المحاولة مرة أخرى.');
+      }
+
+      // Step 2c: Composite real product bottle onto generated images
+      if (product.imageUrl && completedImages.length > 0) {
         setLoadingStatus('جاري دمج صورة المنتج الحقيقية...');
         try {
-          const compositePromises = genData.images.map(async (img) => {
+          const compositePromises = completedImages.map(async (img) => {
             const compRes = await fetch('/api/composite', {
               method: 'POST',
               headers: { 'Content-Type': 'application/json' },
@@ -211,17 +243,20 @@ export default function HomePage() {
                 return { ...img, url: compData.imageDataUrl };
               }
             }
-            return img; // fallback to original if composite fails
+            return img;
           });
-          const compositeImages = await Promise.all(compositePromises);
-          genData.images = compositeImages;
+          completedImages = await Promise.all(compositePromises);
         } catch {
-          // If composite fails, use original images
           console.warn('Composite failed, using original images');
         }
       }
 
-      setGenerationResult(genData);
+      const finalGenData: GenerationResult = {
+        images: completedImages,
+        prompt: promptText,
+        negativePrompt: '',
+      };
+      setGenerationResult(finalGenData);
 
       // Step 3: Generate captions
       setLoadingStatus('جاري كتابة الكابشنات الاحترافية...');
