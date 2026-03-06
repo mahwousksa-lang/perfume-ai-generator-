@@ -15,6 +15,8 @@ export const dynamic = 'force-dynamic';
 const anthropic = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 
 const VIBE_OPTIONS = [
+  'rose_garden',
+  'majlis',
   'royal_luxury',
   'modern_corporate',
   'winter_cabin',
@@ -26,6 +28,8 @@ const VIBE_OPTIONS = [
 ];
 
 const ATTIRE_OPTIONS = [
+  'black_suit_gold_details',
+  'saudi_bisht',
   'white_thobe_black_bisht',
   'charcoal_suit_gold_tie',
   'white_thobe_only',
@@ -56,12 +60,13 @@ Available vibe options: ${VIBE_OPTIONS.join(', ')}
 Available attire options: ${ATTIRE_OPTIONS.join(', ')}
 
 Reasoning guide:
-- Oud/oriental notes → oriental_palace or desert_sunset + white_thobe_black_bisht
+- Floral/Rose notes → rose_garden + black_suit_gold_details
+- Oud/oriental notes → oriental_palace or desert_sunset or majlis + saudi_bisht
 - Fresh/aquatic/marine → ocean_breeze + navy_suit
-- Woody/tobacco/leather → classic_library + charcoal_suit_gold_tie or white_thobe_black_bisht
+- Woody/tobacco/leather → classic_library + charcoal_suit_gold_tie or saudi_bisht
 - Citrus/green/sport → modern_corporate + navy_suit
 - Vanilla/amber/warm → winter_cabin + beige_thobe_brown_bisht
-- Ultra-luxury/royal → royal_luxury + white_thobe_black_bisht
+- Ultra-luxury/royal → royal_luxury + saudi_bisht
 - Minimalist/designer → modern_minimalist + white_thobe_only or charcoal_suit_gold_tie
 
 Respond ONLY with a valid JSON object (no markdown fences, no extra text):
@@ -80,12 +85,12 @@ Respond ONLY with a valid JSON object (no markdown fences, no extra text):
     const rawText =
       analysisResponse.content[0].type === 'text' ? analysisResponse.content[0].text.trim() : '{}';
 
-    let recommendation = { vibe: 'royal_luxury', attire: 'white_thobe_black_bisht', reasoning: '' };
+    let recommendation = { vibe: 'royal_luxury', attire: 'saudi_bisht', reasoning: '' };
     try {
       recommendation = JSON.parse(rawText);
       // Validate that the returned values are in the allowed lists
       if (!VIBE_OPTIONS.includes(recommendation.vibe)) recommendation.vibe = 'royal_luxury';
-      if (!ATTIRE_OPTIONS.includes(recommendation.attire)) recommendation.attire = 'white_thobe_black_bisht';
+      if (!ATTIRE_OPTIONS.includes(recommendation.attire)) recommendation.attire = 'saudi_bisht';
     } catch {
       console.warn('[/api/scrape] Failed to parse Claude recommendation, using defaults.');
     }

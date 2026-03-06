@@ -1,97 +1,49 @@
+
 'use client';
 
 import { useState } from 'react';
-import { Link, Loader2, Sparkles, AlertCircle } from 'lucide-react';
-import type { ScrapeResult } from '@/lib/types';
+import { Link, Loader2, Sparkles } from 'lucide-react';
 
 interface UrlScraperProps {
-  onScrapeComplete: (result: ScrapeResult) => void;
+  onScrape: (url: string) => void;
 }
 
-export default function UrlScraper({ onScrapeComplete }: UrlScraperProps) {
+export default function UrlScraper({ onScrape }: UrlScraperProps) {
   const [url, setUrl] = useState('');
-  const [isLoading, setIsLoading] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [status, setStatus] = useState<string | null>(null);
 
-  const handleScrape = async () => {
-    if (!url.trim()) return;
-    setIsLoading(true);
-    setError(null);
-    setStatus('جاري جلب صفحة المنتج...');
-
-    try {
-      const res = await fetch('/api/scrape', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ url: url.trim() }),
-      });
-
-      const data = await res.json();
-
-      if (!res.ok) {
-        throw new Error(data.error ?? 'فشل في جلب الصفحة');
-      }
-
-      setStatus('Claude يحلل المنتج ويختار الأجواء المثالية...');
-      await new Promise((r) => setTimeout(r, 800)); // UX delay for feel
-
-      onScrapeComplete(data as ScrapeResult);
-      setStatus('✓ تم تحليل المنتج وملء البيانات تلقائيًا');
-    } catch (err) {
-      setError(err instanceof Error ? err.message : 'حدث خطأ غير متوقع');
-      setStatus(null);
-    } finally {
-      setIsLoading(false);
+  const handleButtonClick = () => {
+    if (url.trim()) {
+      onScrape(url.trim());
     }
   };
 
   return (
-    <div className="space-y-3">
-      <div className="flex items-center gap-2 mb-1">
-        <Sparkles size={14} className="text-[var(--gold)]" />
-        <p className="section-label mb-0">استيراد من رابط المنتج</p>
-      </div>
-
-      <div className="flex gap-2">
+    <div className="w-full max-w-lg mx-auto">
+      <div className="flex items-center gap-2">
         <div className="relative flex-1">
           <Link
-            size={14}
-            className="absolute left-3 top-1/2 -translate-y-1/2 text-[var(--text-muted)] pointer-events-none"
+            size={18}
+            className="absolute left-4 top-1/2 -translate-y-1/2 text-gray-400 pointer-events-none"
           />
           <input
             type="url"
-            className="luxury-input pl-9 text-sm"
+            className="w-full bg-gray-800 border border-gray-700 rounded-lg py-3 pl-12 pr-4 text-white placeholder-gray-500 focus:outline-none focus:ring-2 focus:ring-gold-400 transition-all duration-300"
             placeholder="https://mahwous.com/products/..."
             value={url}
             onChange={(e) => setUrl(e.target.value)}
-            onKeyDown={(e) => e.key === 'Enter' && handleScrape()}
+            onKeyDown={(e) => e.key === 'Enter' && handleButtonClick()}
             dir="ltr"
           />
         </div>
         <button
-          onClick={handleScrape}
-          disabled={!url.trim() || isLoading}
-          className="btn-gold px-5 py-3 text-xs whitespace-nowrap flex items-center gap-2 rounded-xl disabled:opacity-40"
+          onClick={handleButtonClick}
+          disabled={!url.trim()}
+          className="bg-gold-500 hover:bg-gold-600 text-black font-bold py-3 px-6 rounded-lg transition-colors duration-300 disabled:opacity-50 disabled:cursor-not-allowed flex items-center gap-2"
         >
-          {isLoading ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          {isLoading ? '...' : 'تحليل'}
+          <Sparkles size={20} />
+          <span>ابـدأ</span>
         </button>
       </div>
-
-      {/* Status / Error */}
-      {status && !error && (
-        <div className="flex items-center gap-2 text-xs text-[var(--text-secondary)]">
-          {isLoading && <Loader2 size={11} className="animate-spin text-[var(--gold)] shrink-0" />}
-          <span>{status}</span>
-        </div>
-      )}
-      {error && (
-        <div className="flex items-start gap-2 text-xs text-red-400 bg-red-500/10 border border-red-500/20 rounded-xl px-4 py-3">
-          <AlertCircle size={13} className="mt-0.5 shrink-0" />
-          <span>{error}</span>
-        </div>
-      )}
     </div>
   );
 }

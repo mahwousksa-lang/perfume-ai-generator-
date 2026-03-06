@@ -2,7 +2,7 @@
 // ============================================================
 // lib/scraper.ts
 // Scrapes perfume product pages and extracts structured data.
-// Designed to work with Shopify, WooCommerce, and custom stores.
+// Optimized for mahwous.com and other e-commerce stores.
 // ============================================================
 
 import * as cheerio from 'cheerio';
@@ -46,9 +46,26 @@ function detectGender(text: string): 'men' | 'women' | 'unisex' {
   return 'unisex';
 }
 
-// ─── Olfactory notes extraction ──────────────────────────────────────────────────
-function extractNotes(text: string): string {
-  // Match patterns like "Top Notes: bergamot, lemon" in any language
+// ─── Olfactory notes extraction (optimized for mahwous.com) ──────────────────
+function extractNotes(text: string, $: cheerio.CheerioAPI): string {
+  const notes: string[] = [];
+
+  // Strategy 1: Look for specific mahwous.com structure
+  $('p:contains("المكونات العليا"), p:contains("مقدمة العطر")').next('p').each((i, el) => {
+    notes.push(`Top: ${$(el).text().trim()}`);
+  });
+  $('p:contains("المكونات الوسطى"), p:contains("قلب العطر")').next('p').each((i, el) => {
+    notes.push(`Heart: ${$(el).text().trim()}`);
+  });
+  $('p:contains("المكونات الأساسية"), p:contains("قاعدة العطر")').next('p').each((i, el) => {
+    notes.push(`Base: ${$(el).text().trim()}`);
+  });
+
+  if (notes.length > 0) {
+    return notes.join(' • ');
+  }
+
+  // Strategy 2: Generic patterns as fallback
   const patterns = [
     /(?:top notes?|heart notes?|base notes?|middle notes?|olfactory notes?|notes?)[:\s]+([^\n.;<]{5,200})/gi,
     /(?:رائحة|نوتات|مقدمة|قلب|قاعدة)[:\s]+([^\n.;<]{5,100})/gi,
@@ -84,59 +101,53 @@ export async function scrapeProductPage(url: string): Promise<ScrapedProduct> {
   const product: ScrapedProduct = {};
   const fullText = $('body').text().replace(/\s+/g, ' ');
 
-  // ── Product Name ───────────────────────────────────────────────────────────────
+  // ── Product Name (optimized for mahwous.com) ──────────────────────────────────
   product.name = (
+    $('.product-details__title').first().text() ||
     getOGMeta($, 'og:title') ||
-    $('h1.product-title, h1.product_title, h1[class*="title"], h1[itemprop="name"]').first().text() ||
     $('h1').first().text()
   )
     .trim()
     .replace(/\s+/g, ' ')
     .substring(0, 120);
 
-  // ── Brand ──────────────────────────────────────────────────────────────────────
+  // ── Brand (optimized for mahwous.com) ──────────────────────────────────────────
   product.brand = (
-    $('[class*="brand"] a, [class*="vendor"] a, [itemprop="brand"]').first().text() ||
-    $('[class*="brand"], [class*="vendor"]').first().text() ||
+    $('.product-details__brand a').first().text() ||
     getOGMeta($, 'og:site_name') ||
-    $('meta[name="application-name"]').attr('content') ||
-    ''
+    'mahwous'
   )
     .trim()
     .substring(0, 80);
 
-  // ── Description ───────────────────────────────────────────────────────────────
+  // ── Description (optimized for mahwous.com) ──────────────────────────────────
   product.description = (
+    $('.product-details__description').text() ||
     getOGMeta($, 'og:description') ||
-    $('[class*="product-description"], [class*="description"], [itemprop="description"]')
-      .first()
-      .text() ||
     $('meta[name="description"]').attr('content') ||
     ''
   )
     .trim()
     .replace(/\s+/g, ' ')
-    .substring(0, 800);
+    .substring(0, 1500);
 
-  // ── Main Product Image ─────────────────────────────────────────────────────────
+  // ── Main Product Image (optimized for mahwous.com) ─────────────────────────────
   const rawImageUrl =
+    $('.main-product-image-container img').attr('src') ||
     getOGMeta($, 'og:image') ||
-    $('[class*="product"] img[src], [class*="product-image"] img[src]').first().attr('src') ||
-    $('img[itemprop="image"]').first().attr('src') ||
     '';
 
   product.imageUrl = resolveUrl(rawImageUrl, url);
 
   // ── Olfactory Notes ────────────────────────────────────────────────────────────
-  product.notes = extractNotes(fullText) || extractNotes(product.description ?? '');
+  product.notes = extractNotes(fullText, $);
 
   // ── Gender ────────────────────────────────────────────────────────────────────
   product.gender = detectGender(fullText + ' ' + (product.name ?? '') + ' ' + (product.description ?? ''));
 
-  // ── Price (bonus data) ────────────────────────────────────────────────────────
+  // ── Price (optimized for mahwous.com) ────────────────────────────────────────
   product.price = (
-    $('[class*="price"]:not([class*="compare"])').first().text() ||
-    $('[itemprop="price"]').first().text() ||
+    $('.product-price').first().text() ||
     ''
   )
     .trim()
