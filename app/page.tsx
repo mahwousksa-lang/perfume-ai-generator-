@@ -36,6 +36,7 @@ export default function HomePage() {
   const [voiceoverText, setVoiceoverText] = useState<string>('');
   const [isPollingVideos, setIsPollingVideos] = useState(false);
   const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+  const videoInfosRef = useRef<HedraVideoInfo[]>([]); // always-fresh ref for polling
 
   // ── Scrape data for video generation ────────────────────────────────────
   const [scrapeVibe, setScrapeVibe] = useState<string>('');
@@ -78,9 +79,16 @@ export default function HomePage() {
   };
 
   // ── Video polling logic ─────────────────────────────────────────────────
-  const pollVideoStatus = useCallback(async (videos: HedraVideoInfo[]) => {
-    const pendingVideos = videos.filter(
-      (v) => v.id && (v.status === 'pending' || v.status === 'processing')
+  // Keep ref in sync with state for polling (avoids stale closure)
+  useEffect(() => {
+    videoInfosRef.current = videoInfos;
+  }, [videoInfos]);
+
+  const pollVideoStatus = useCallback(async () => {
+    const currentVideos = videoInfosRef.current;
+    const pendingVideos = currentVideos.filter(
+      (v) => v.id && (v.status === 'pending' || v.status === 'processing' ||
+        v.status === 'queued' || v.status === 'finalizing')
     );
 
     if (pendingVideos.length === 0) {
@@ -136,32 +144,33 @@ export default function HomePage() {
     }
   }, []);
 
-  // Start polling when video infos change
+  // Start polling interval once when isPollingVideos becomes true
   useEffect(() => {
-    if (!isPollingVideos || videoInfos.length === 0) return;
+    if (!isPollingVideos) return;
 
-    // Clear existing interval
+    // Clear any existing interval
     if (pollIntervalRef.current) {
       clearInterval(pollIntervalRef.current);
     }
 
-    // Poll every 10 seconds
-    pollIntervalRef.current = setInterval(() => {
-      pollVideoStatus(videoInfos);
-    }, 10000);
-
-    // Initial poll after 5 seconds
+    // Initial poll after 8 seconds (video needs time to start)
     const initialTimeout = setTimeout(() => {
-      pollVideoStatus(videoInfos);
-    }, 5000);
+      pollVideoStatus();
+    }, 8000);
+
+    // Then poll every 12 seconds
+    pollIntervalRef.current = setInterval(() => {
+      pollVideoStatus();
+    }, 12000);
 
     return () => {
+      clearTimeout(initialTimeout);
       if (pollIntervalRef.current) {
         clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
       }
-      clearTimeout(initialTimeout);
     };
-  }, [isPollingVideos, videoInfos, pollVideoStatus]);
+  }, [isPollingVideos, pollVideoStatus]);
 
   // ── Generate Videos ─────────────────────────────────────────────────────
   const handleGenerateVideos = async () => {
@@ -222,6 +231,7 @@ export default function HomePage() {
       }));
 
       setVideoInfos(newVideoInfos);
+      videoInfosRef.current = newVideoInfos; // sync ref immediately
 
       // Start polling for video status
       const hasPending = newVideoInfos.some(

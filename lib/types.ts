@@ -162,7 +162,7 @@ export type VideoAspectRatio = '9:16' | '16:9';
 export interface HedraVideoInfo {
   id: string;
   aspectRatio: VideoAspectRatio;
-  status: 'pending' | 'processing' | 'complete' | 'failed' | 'error';
+  status: 'queued' | 'pending' | 'processing' | 'finalizing' | 'complete' | 'failed' | 'error';
   videoUrl?: string | null;
   progress?: number;
   eta_sec?: number;

@@ -61,12 +61,12 @@ export async function POST(request: NextRequest) {
             };
           }
 
-          if (status.status === 'failed') {
+          if (status.status === 'failed' || status.status === 'error') {
             return {
               ...video,
               status: 'failed',
               videoUrl: null,
-              error: status.error || 'Video generation failed',
+              error: status.error || status.error_message || 'Video generation failed',
             };
           }
 
@@ -91,7 +91,7 @@ export async function POST(request: NextRequest) {
     );
 
     const allComplete = results.every(
-      (r) => r.status === 'complete' || r.status === 'failed'
+      (r) => r.status === 'complete' || r.status === 'failed' || r.status === 'error'
     );
 
     return NextResponse.json({
