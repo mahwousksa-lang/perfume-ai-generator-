@@ -154,3 +154,48 @@ export interface VideoScenario {
   voiceover: string;
   cta: string;
 }
+
+// ── Hedra Video Types ──────────────────────────────────────────────────────
+
+export type VideoAspectRatio = '9:16' | '16:9';
+
+export interface HedraVideoInfo {
+  id: string;
+  aspectRatio: VideoAspectRatio;
+  status: 'pending' | 'processing' | 'complete' | 'failed' | 'error';
+  videoUrl?: string | null;
+  progress?: number;
+  eta_sec?: number;
+  error?: string;
+}
+
+export interface VideoGenerationState {
+  videos: HedraVideoInfo[];
+  voiceoverText: string;
+  isGenerating: boolean;
+}
+
+// Video platform distribution
+export interface VideoPlatformUsage {
+  id: string;
+  platform: string;
+  platformAr: string;
+  usage: string;
+  usageAr: string;
+  aspectRatio: VideoAspectRatio;
+  icon: string;
+  color: string;
+  captionKey: string;
+}
+
+export interface VideoPlatformCaptions {
+  instagram_reels: string;
+  tiktok_video: string;
+  snapchat_video: string;
+  youtube_shorts: string;
+  facebook_stories_video: string;
+  youtube_video: string;
+  twitter_video: string;
+  linkedin_video: string;
+  facebook_video: string;
+}

@@ -1,6 +1,6 @@
 'use client';
 
-import { useState, useRef } from 'react';
+import { useState, useRef, useCallback, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import { ArrowLeft, Loader2, Link2, Sparkles, Video, Image, Upload, X } from 'lucide-react';
 
@@ -12,10 +12,12 @@ import type {
   AppStep,
   VideoScenario,
   PlatformCaptions,
+  HedraVideoInfo,
+  VideoPlatformCaptions,
 } from '@/lib/types';
 
 import OutputGrid from '@/components/OutputGrid';
-import ScenarioDisplay from '@/components/ScenarioDisplay';
+import VideoDisplay from '@/components/VideoDisplay';
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -27,6 +29,16 @@ export default function HomePage() {
   const [scenarios, setScenarios] = useState<VideoScenario[] | null>(null);
   const [activeTab, setActiveTab] = useState<'images' | 'videos'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
+
+  // ── Video generation state ──────────────────────────────────────────────
+  const [videoInfos, setVideoInfos] = useState<HedraVideoInfo[]>([]);
+  const [videoCaptions, setVideoCaptions] = useState<VideoPlatformCaptions | null>(null);
+  const [voiceoverText, setVoiceoverText] = useState<string>('');
+  const [isPollingVideos, setIsPollingVideos] = useState(false);
+  const pollIntervalRef = useRef<NodeJS.Timeout | null>(null);
+
+  // ── Scrape data for video generation ────────────────────────────────────
+  const [scrapeVibe, setScrapeVibe] = useState<string>('');
 
   // ── Product reference image upload state ──────────────────────────────────
   const [bottleImageBase64, setBottleImageBase64] = useState<string>('');
@@ -65,6 +77,187 @@ export default function HomePage() {
     }
   };
 
+  // ── Video polling logic ─────────────────────────────────────────────────
+  const pollVideoStatus = useCallback(async (videos: HedraVideoInfo[]) => {
+    const pendingVideos = videos.filter(
+      (v) => v.id && (v.status === 'pending' || v.status === 'processing')
+    );
+
+    if (pendingVideos.length === 0) {
+      setIsPollingVideos(false);
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+        pollIntervalRef.current = null;
+      }
+      return;
+    }
+
+    try {
+      const pollRes = await fetch('/api/poll-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          videos: pendingVideos.map((v) => ({ id: v.id, aspectRatio: v.aspectRatio })),
+        }),
+      });
+
+      if (!pollRes.ok) return;
+
+      const pollData = await pollRes.json();
+
+      setVideoInfos((prev) => {
+        const updated = [...prev];
+        for (const result of pollData.results) {
+          const idx = updated.findIndex((v) => v.aspectRatio === result.aspectRatio);
+          if (idx !== -1) {
+            updated[idx] = {
+              ...updated[idx],
+              status: result.status,
+              videoUrl: result.videoUrl || updated[idx].videoUrl,
+              progress: result.progress ?? updated[idx].progress,
+              eta_sec: result.eta_sec,
+              error: result.error,
+            };
+          }
+        }
+        return updated;
+      });
+
+      if (pollData.allComplete) {
+        setIsPollingVideos(false);
+        if (pollIntervalRef.current) {
+          clearInterval(pollIntervalRef.current);
+          pollIntervalRef.current = null;
+        }
+        toast.success('تم توليد الفيديوهات بنجاح!');
+      }
+    } catch (err) {
+      console.error('[pollVideoStatus] Error:', err);
+    }
+  }, []);
+
+  // Start polling when video infos change
+  useEffect(() => {
+    if (!isPollingVideos || videoInfos.length === 0) return;
+
+    // Clear existing interval
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+    }
+
+    // Poll every 10 seconds
+    pollIntervalRef.current = setInterval(() => {
+      pollVideoStatus(videoInfos);
+    }, 10000);
+
+    // Initial poll after 5 seconds
+    const initialTimeout = setTimeout(() => {
+      pollVideoStatus(videoInfos);
+    }, 5000);
+
+    return () => {
+      if (pollIntervalRef.current) {
+        clearInterval(pollIntervalRef.current);
+      }
+      clearTimeout(initialTimeout);
+    };
+  }, [isPollingVideos, videoInfos, pollVideoStatus]);
+
+  // ── Generate Videos ─────────────────────────────────────────────────────
+  const handleGenerateVideos = async () => {
+    if (!perfumeData || !generationResult?.images?.length) {
+      toast.error('يجب توليد الصور أولاً');
+      return;
+    }
+
+    // Use the story image (9:16) as the reference for video generation
+    const storyImage = generationResult.images.find((img) => img.format === 'story');
+    const imageUrl = storyImage?.url || generationResult.images[0]?.url;
+
+    if (!imageUrl) {
+      toast.error('لا توجد صورة مرجعية لتوليد الفيديو');
+      return;
+    }
+
+    try {
+      toast.info('جاري بدء توليد الفيديوهات...');
+
+      // Initialize video states
+      setVideoInfos([
+        { id: '', aspectRatio: '9:16', status: 'pending', progress: 0 },
+        { id: '', aspectRatio: '16:9', status: 'pending', progress: 0 },
+      ]);
+
+      // Start video generation
+      const videoRes = await fetch('/api/generate-video', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          perfumeData,
+          imageUrl,
+          vibe: scrapeVibe,
+        }),
+      });
+
+      if (!videoRes.ok) {
+        const err = await videoRes.json();
+        throw new Error(err.error || 'فشل بدء توليد الفيديو');
+      }
+
+      const videoData = await videoRes.json();
+      setVoiceoverText(videoData.voiceoverText || '');
+
+      // Update video infos with IDs from response
+      const newVideoInfos: HedraVideoInfo[] = videoData.videos.map((v: {
+        id: string;
+        aspectRatio: '9:16' | '16:9';
+        status: string;
+        error?: string;
+      }) => ({
+        id: v.id,
+        aspectRatio: v.aspectRatio,
+        status: v.status as HedraVideoInfo['status'],
+        progress: 0,
+        error: v.error,
+      }));
+
+      setVideoInfos(newVideoInfos);
+
+      // Start polling for video status
+      const hasPending = newVideoInfos.some(
+        (v) => v.id && v.status !== 'failed' && v.status !== 'error'
+      );
+      if (hasPending) {
+        setIsPollingVideos(true);
+      }
+
+      // Generate video captions in parallel
+      try {
+        const capRes = await fetch('/api/video-captions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            perfumeData,
+            productUrl: productUrl.trim(),
+            vibe: scrapeVibe,
+          }),
+        });
+        if (capRes.ok) {
+          const capData = await capRes.json();
+          setVideoCaptions(capData.captions);
+        }
+      } catch {
+        console.warn('Video captions generation failed');
+      }
+
+      toast.success('تم بدء توليد الفيديوهات — سيتم تحديث الحالة تلقائياً');
+    } catch (e: unknown) {
+      const errorMessage = e instanceof Error ? e.message : 'حدث خطأ في توليد الفيديو';
+      toast.error(errorMessage);
+      setVideoInfos([]);
+    }
+  };
+
   const handleGenerateCampaign = async () => {
     if (!productUrl.trim()) {
       toast.error('الرجاء إدخال رابط المنتج أولاً.');
@@ -95,6 +288,7 @@ export default function HomePage() {
         price: scrapeData.product.price,
       };
       setPerfumeData(product);
+      setScrapeVibe(scrapeData.recommendation.vibe);
 
       // Step 2: Generate images — Gemini Nano Banana (primary) + FLUX LoRA (fallback)
       setLoadingStatus('جاري توليد الصور بأسلوب نانو بنانا...');
@@ -222,7 +416,7 @@ export default function HomePage() {
       }
 
       setStep('output');
-      toast.success('حملتك جاهزة لجميع المنصات! 🎉');
+      toast.success('حملتك جاهزة لجميع المنصات!');
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'حدث خطأ غير متوقع.';
       toast.error(errorMessage);
@@ -241,6 +435,15 @@ export default function HomePage() {
     setLoadingStatus('');
     setBottleImageBase64('');
     setBottleImagePreview('');
+    setVideoInfos([]);
+    setVideoCaptions(null);
+    setVoiceoverText('');
+    setIsPollingVideos(false);
+    setScrapeVibe('');
+    if (pollIntervalRef.current) {
+      clearInterval(pollIntervalRef.current);
+      pollIntervalRef.current = null;
+    }
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -281,7 +484,7 @@ export default function HomePage() {
             <div className="space-y-3">
               <h2 className="text-3xl font-bold text-[var(--gold)]">حملتك الإعلانية في ثوانٍ</h2>
               <p className="text-[var(--text-secondary)] max-w-md">
-                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور احترافية بأسلوب نانو بنانا مع كابشنات مخصصة لـ 15 منصة سوشال ميديا.
+                أدخل رابط أي عطر من متجر مهووس، وسيقوم الذكاء الاصطناعي بتوليد صور وفيديوهات احترافية مع كابشنات مخصصة لـ 15+ منصة سوشال ميديا.
               </p>
             </div>
 
@@ -371,14 +574,14 @@ export default function HomePage() {
             <div className="flex flex-wrap justify-center gap-2 text-xs text-[var(--text-muted)]">
               {[
                 '3 صور بأسلوب نانو بنانا',
-                '15 منصة سوشال ميديا',
+                '2 فيديو بتعليق صوتي عربي',
+                '15+ منصة سوشال ميديا',
                 'كابشن مخصص لكل منصة',
                 'صورة مرجعية للمنتج',
-                'سيناريو فيديو ترند',
                 'حراج + تلقرام + تروث',
               ].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
-                  ✓ {f}
+                  {f}
                 </span>
               ))}
             </div>
@@ -427,7 +630,7 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Tab Navigation — 2 tabs only: الصور + الفيديو */}
+            {/* Tab Navigation — 2 tabs: الصور + الفيديو */}
             <div className="flex gap-1 p-1 bg-[var(--obsidian-light)] rounded-xl">
               {[
                 { key: 'images', label: 'الصور والكابشنات', icon: Image },
@@ -444,11 +647,14 @@ export default function HomePage() {
                 >
                   <Icon size={14} />
                   {label}
+                  {key === 'videos' && isPollingVideos && (
+                    <Loader2 size={12} className="animate-spin" />
+                  )}
                 </button>
               ))}
             </div>
 
-            {/* Images + Captions Tab — merged into one */}
+            {/* Images + Captions Tab */}
             {activeTab === 'images' && (
               <OutputGrid
                 images={generationResult.images}
@@ -458,13 +664,64 @@ export default function HomePage() {
             )}
 
             {/* Videos Tab */}
-            {activeTab === 'videos' && scenarios && (
-              <ScenarioDisplay scenarios={scenarios} />
-            )}
-            {activeTab === 'videos' && !scenarios && (
-              <div className="text-center py-12 text-[var(--text-muted)]">
-                <Loader2 size={24} className="animate-spin mx-auto mb-3" />
-                <p>جاري توليد السيناريوهات...</p>
+            {activeTab === 'videos' && (
+              <div className="space-y-6">
+                {/* Video Generation Button — show if no videos generated yet */}
+                {videoInfos.length === 0 && (
+                  <div className="text-center py-8 space-y-6">
+                    <div className="space-y-3">
+                      <Video size={48} className="mx-auto text-[var(--gold)] opacity-60" />
+                      <h3 className="text-lg font-medium text-[var(--text-primary)]">توليد فيديوهات إعلانية</h3>
+                      <p className="text-sm text-[var(--text-muted)] max-w-md mx-auto">
+                        سيتم توليد فيديوهين احترافيين بتعليق صوتي عربي:
+                        فيديو عمودي (9:16) لـ Reels و TikTok و Snapchat،
+                        وفيديو أفقي (16:9) لـ YouTube و Twitter و LinkedIn.
+                      </p>
+                    </div>
+
+                    <button
+                      onClick={handleGenerateVideos}
+                      className="btn-gold px-8 py-3 text-sm flex items-center justify-center gap-2 rounded-xl mx-auto"
+                    >
+                      <Video size={16} />
+                      ابدأ توليد الفيديوهات
+                    </button>
+
+                    {/* Show scenarios below */}
+                    {scenarios && scenarios.length > 0 && (
+                      <div className="mt-8 space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className="gold-divider flex-1" />
+                          <p className="section-label mb-0 px-2 text-sm">سيناريوهات الفيديو</p>
+                          <div className="gold-divider flex-1" />
+                        </div>
+                        <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                          {scenarios.map((scenario, i) => (
+                            <div key={i} className="glass-card p-4 space-y-3 text-right">
+                              <p className="text-xs font-medium text-[var(--gold)]">{scenario.platform}</p>
+                              <div className="space-y-2 text-xs text-[var(--text-secondary)]">
+                                <p><span className="text-yellow-400">الهوك:</span> {scenario.hook}</p>
+                                <p><span className="text-blue-400">المشهد:</span> {scenario.action}</p>
+                                <p><span className="text-green-400">الصوت:</span> {scenario.voiceover}</p>
+                                <p><span className="text-orange-400">CTA:</span> {scenario.cta}</p>
+                              </div>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                )}
+
+                {/* Video Display — show when videos are being generated or complete */}
+                {videoInfos.length > 0 && (
+                  <VideoDisplay
+                    videos={videoInfos}
+                    captions={videoCaptions}
+                    voiceoverText={voiceoverText}
+                    perfumeName={perfumeData?.name}
+                  />
+                )}
               </div>
             )}
           </div>
