@@ -1,6 +1,7 @@
 // ============================================================
 // lib/promptEngine.ts  — Mahwous Perfume AI Campaign Generator
 // Hybrid Pipeline: FLUX LoRA (character stability) + Gemini (Nano Banana quality)
+// v4: STRICT bottle reference enforcement
 // ============================================================
 // @ts-nocheck
 
@@ -48,34 +49,6 @@ function getSceneDescription(vibe: string, notes?: string | string[]): string {
   return 'magnificent Arabian palace interior with ornate golden arches, intricate Islamic geometric patterns, warm amber lanterns, marble floors with golden inlays, luxurious atmosphere';
 }
 
-// ─── BOTTLE DESCRIPTION ──────────────────────────────────────────────────────
-function getBottleDescription(name: string, brand: string, bottleDescription?: string): string {
-  if (bottleDescription?.trim()) {
-    return `He is holding the EXACT perfume bottle shown in the reference image: ${bottleDescription}. The bottle must appear IDENTICAL to the reference image with the same shape, colors, label text, and cap.`;
-  }
-
-  const lower = (name + ' ' + brand).toLowerCase();
-
-  if ((lower.includes('ameer') && lower.includes('oud')) || lower.includes('أمير العود') || lower.includes('ameer al oudh')) {
-    return `He is holding up a PHOTOREALISTIC Lattafa Ameer Al Oudh perfume bottle - rectangular tall glass bottle with dark brown-to-amber gradient liquid inside, transparent clear glass, white Arabic calligraphy text "أمير العود" and English text "Ameer Al Oudh" on front, large square crystal-clear transparent cap with beveled edges.`;
-  }
-  if (lower.includes('bvlgari') || lower.includes('bulgari')) {
-    return `He is holding up a PHOTOREALISTIC Bvlgari perfume bottle - sleek modern glass bottle with silver metallic accents, BVLGARI logo engraved on the front, premium luxury packaging.`;
-  }
-  if (lower.includes('good girl') || lower.includes('carolina herrera')) {
-    return `He is holding up a PHOTOREALISTIC Carolina Herrera Good Girl perfume bottle - iconic stiletto high-heel shaped bottle in deep burgundy red glass, black butterfly-shaped cap on top, gold metallic base.`;
-  }
-  if (lower.includes('chanel') || lower.includes('شانيل')) {
-    return `He is holding up a PHOTOREALISTIC Chanel perfume bottle - iconic rectangular clear glass bottle with black cap, CHANEL logo in black letters.`;
-  }
-  if (lower.includes('oud') || lower.includes('عود') || lower.includes('bois')) {
-    return `He is holding up a PHOTOREALISTIC luxury oud perfume bottle with dark amber glass, golden Arabic calligraphy, heavy crystal-cut base, golden metallic cap.`;
-  }
-
-  const bottleName = `${brand} ${name}`.trim();
-  return `He is holding up a PHOTOREALISTIC ${bottleName} perfume bottle with elegant premium glass, luxury packaging with the brand name "${brand}" and product name "${name}" clearly visible on the label.`;
-}
-
 // ─── CHARACTER ATTIRE ─────────────────────────────────────────────────────────
 function getCharacterDescription(attire: string): string {
   if (attire === 'white_thobe_only' || attire === 'white_thobe_black_bisht') {
@@ -101,16 +74,21 @@ export function buildFluxPrompt(params: {
   aspectHint?: string;
   bottleDescription?: string;
   loraTriggerWord?: string;
+  hasBottleReference?: boolean;
 }): string {
-  const { perfumeData, vibe = '', attire = '', aspectHint = '', bottleDescription, loraTriggerWord = 'MAHWOUS_MAN' } = params;
+  const { perfumeData, vibe = '', attire = '', aspectHint = '', bottleDescription, loraTriggerWord = 'MAHWOUS_MAN', hasBottleReference = false } = params;
   const { name = '', brand = '', notes } = perfumeData;
 
   const sceneDesc = getSceneDescription(vibe, notes);
-  const bottleDesc = getBottleDescription(name, brand, bottleDescription);
   const characterDesc = getCharacterDescription(attire);
 
+  // When we have a bottle reference image, tell FLUX to preserve the bottle from the reference
+  const bottleInstruction = hasBottleReference
+    ? `holding the EXACT perfume bottle from the reference image (preserve the bottle shape, cap, label, and colors EXACTLY as shown in the input image)`
+    : `holding a luxury ${brand} ${name} perfume bottle`;
+
   // CRITICAL: trigger word MUST be first for LoRA activation
-  return `${loraTriggerWord}, ${characterDesc.replace(/\n/g, ' ')}, holding a perfume bottle with right hand extended toward camera, ${bottleDesc.replace(/He is holding up a PHOTOREALISTIC /g, '').replace(/He is holding the EXACT perfume bottle shown in the reference image: /g, '')}, background: ${sceneDesc}, photorealistic 3D Pixar/Disney animation style, cinematic lighting, 4K quality${aspectHint ? `, ${aspectHint}` : ''}`;
+  return `${loraTriggerWord}, ${characterDesc.replace(/\n/g, ' ')}, ${bottleInstruction}, background: ${sceneDesc}, photorealistic 3D Pixar/Disney animation style, cinematic lighting, 4K quality${aspectHint ? `, ${aspectHint}` : ''}`;
 }
 
 // ─── GEMINI ENHANCEMENT PROMPT (Nano Banana style) ───────────────────────────
@@ -126,21 +104,52 @@ export function buildGeminiEnhancePrompt(params: {
   const { name = '', brand = '', notes } = perfumeData;
 
   const sceneDesc = getSceneDescription(vibe, notes);
-  const bottleDesc = getBottleDescription(name, brand, bottleDescription);
   const characterDesc = getCharacterDescription(attire);
 
   const { hasBottleReference } = params;
-  const bottleRefNote = hasBottleReference
-    ? `\n\nREFERENCE IMAGE 2 (BOTTLE): The second attached image is the REAL product photo of the perfume bottle. You MUST reproduce this EXACT bottle in the scene — same shape, same colors, same label text, same cap design. The bottle in the final image must be IDENTICAL to this reference photo.`
-    : '';
 
+  // When bottle reference is available, use STRICT instructions
+  if (hasBottleReference) {
+    return `You are given TWO reference images and a task:
+
+IMAGE 1 (FIRST IMAGE): This is the REAL product photo of the perfume bottle "${name}" by ${brand}. 
+YOU MUST COPY THIS BOTTLE EXACTLY — same shape, same proportions, same cap design, same label, same colors, same material appearance. 
+DO NOT invent a different bottle. DO NOT change the bottle shape. The bottle in your output MUST be a pixel-perfect 3D recreation of this exact bottle.
+
+IMAGE 2 (SECOND IMAGE): This is the character generated by FLUX LoRA. Keep the EXACT same face, beard, hair, and identity from this image. Do NOT change the character's face.
+
+YOUR TASK: Create a single image${aspectHint ? ` in ${aspectHint}` : ''} combining:
+
+CHARACTER: ${characterDesc}
+The character is holding the perfume bottle (from IMAGE 1) naturally with his right hand raised and extended slightly toward the camera, presenting it proudly. The bottle is clearly visible and prominently featured.
+
+BACKGROUND: ${sceneDesc}
+${notes ? `\nThe perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
+
+STYLE:
+- Photorealistic 3D animation quality (like Pixar/Disney movies — Nano Banana style)
+- Cinematic professional lighting with dramatic shadows and highlights
+- 4K ultra-high resolution, sharp focus throughout
+- Rich colors, global illumination, subsurface scattering on skin
+- Professional perfume marketing campaign quality
+- No text overlays, no watermarks
+
+ABSOLUTE RULES (DO NOT VIOLATE):
+1. The perfume bottle MUST be an EXACT 3D copy of IMAGE 1 — same shape, same cap, same label, same proportions, same colors. This is NON-NEGOTIABLE.
+2. The character's face MUST match IMAGE 2 exactly.
+3. The bottle must NOT be replaced with a generic or different bottle.
+4. If you cannot reproduce the exact bottle, still use the closest possible approximation of IMAGE 1.`;
+  }
+
+  // Fallback: no bottle reference available
+  const bottleName = `${brand} ${name}`.trim();
   return `Transform this image into a high-quality 3D animated Pixar/Disney CGI style image${aspectHint ? ` in ${aspectHint}` : ''}:
 
-REFERENCE IMAGE 1 (CHARACTER): The first attached image shows the character generated by FLUX LoRA. Keep the EXACT same face, features, and identity. Do NOT change the character's face.${bottleRefNote}
+REFERENCE IMAGE (CHARACTER): The attached image shows the character. Keep the EXACT same face, features, and identity. Do NOT change the character's face.
 
 CHARACTER: ${characterDesc}
 
-BOTTLE: ${bottleDesc}
+BOTTLE: He is holding a luxury ${bottleName} perfume bottle with elegant premium glass and the brand name "${brand}" and product name "${name}" clearly visible.
 ${notes ? `\nThe perfume "${name}" by ${brand} has notes of: ${Array.isArray(notes) ? notes.join(', ') : notes}` : ''}
 
 POSE: He is holding the perfume bottle naturally with his right hand raised and extended slightly toward the camera, presenting it proudly. The bottle is clearly visible and prominently featured.
@@ -151,15 +160,9 @@ STYLE REQUIREMENTS:
 - Photorealistic 3D animation quality (like Pixar/Disney movies — Nano Banana style)
 - Cinematic professional lighting with dramatic shadows and highlights
 - 4K ultra-high resolution, sharp focus throughout
-- The perfume bottle MUST be PHOTOREALISTIC and IDENTICAL to the reference product photo
 - Rich colors, global illumination, subsurface scattering on skin
 - Professional perfume marketing campaign quality
-- No text overlays, no watermarks
-
-CRITICAL PRIORITIES:
-1. Character face must match reference image 1
-2. Perfume bottle must be IDENTICAL to reference image 2 (exact shape, label, colors)
-3. Overall quality must be Pixar/Disney 3D animation (Nano Banana style)`;
+- No text overlays, no watermarks`;
 }
 
 // ─── LEGACY buildGeminiPrompt (backward compatibility) ───────────────────────
@@ -194,6 +197,7 @@ export function buildNegativePrompt(): string {
     'realistic human face, photorealistic skin, real person, photograph',
     'multiple characters, crowd, duplicate character',
     'wrong bottle shape, incorrect label, blurry bottle, distorted perfume bottle',
+    'generic bottle, different bottle, square bottle when reference is round',
   ].join(', ');
 }
 
