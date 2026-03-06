@@ -24,8 +24,12 @@ function getBottleDescription(name: string, brand: string): string {
     return `holding up a PHOTOREALISTIC Bvlgari perfume bottle, sleek modern glass bottle with silver metallic accents, BVLGARI logo engraved on the front, premium luxury packaging with clean geometric lines, realistic glass transparency and reflections`;
   }
 
+  if ((lower.includes('ameer') && lower.includes('oud')) || lower.includes('أمير العود') || lower.includes('ameer al oudh')) {
+    return `holding up a PHOTOREALISTIC Lattafa Ameer Al Oudh perfume bottle, rectangular tall glass bottle with dark brown-to-amber gradient liquid inside, transparent clear glass with flat sides, white Arabic calligraphy text "أمير العود" and English text "Ameer Al Oudh" printed on front, small text "لطافة للمطور" at bottom, "EAU DE PARFUM" and "100ML 3.4FL.OZ" text visible, large square crystal-clear transparent cap with beveled edges on top, the bottle has a dark espresso-brown color at top fading to warm golden amber at bottom, realistic glass transparency showing the liquid inside, premium luxury packaging`;
+  }
+
   if (lower.includes('lattafa') || lower.includes('لطافة')) {
-    return `holding up a PHOTOREALISTIC Lattafa perfume bottle, elegant dark glass bottle with ornate golden Arabic calligraphy label, heavy crystal-cut base, golden metallic domed cap, warm amber liquid visible through the glass, premium Middle Eastern luxury packaging, LATTAFA brand name clearly visible`;
+    return `holding up a PHOTOREALISTIC Lattafa perfume bottle, elegant rectangular glass bottle with dark brown gradient liquid, transparent clear glass, Arabic calligraphy label, crystal clear square cap, warm amber liquid visible through the glass, premium Middle Eastern luxury packaging, LATTAFA brand name clearly visible`;
   }
 
   if (lower.includes('oud') || lower.includes('عود') || lower.includes('bois')) {

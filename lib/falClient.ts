@@ -30,6 +30,7 @@ import type { GenerationRequest, GeneratedImage } from './types';
 
 const FAL_BASE = 'https://queue.fal.run';
 const FAL_MODEL = 'fal-ai/flux-lora';
+const FAL_MODEL_IMG2IMG = 'fal-ai/flux-lora/image-to-image';
 
 // ─── Aspect ratio configurations ─────────────────────────────────────────────
 interface AspectConfig {
@@ -75,8 +76,10 @@ function getAuthHeader(): string {
 // ─── Step 1: Submit to fal.ai queue ──────────────────────────────────────────
 async function submitToQueue(
   input: Record<string, unknown>,
+  useImg2Img = false,
 ): Promise<string> {
-  const res = await fetch(`${FAL_BASE}/${FAL_MODEL}`, {
+  const model = useImg2Img ? FAL_MODEL_IMG2IMG : FAL_MODEL;
+  const res = await fetch(`${FAL_BASE}/${model}`, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -100,9 +103,11 @@ async function submitToQueue(
 async function pollUntilDone(
   requestId: string,
   timeoutMs = 110_000,
+  useImg2Img = false,
 ): Promise<string> {
-  const statusUrl = `${FAL_BASE}/${FAL_MODEL}/requests/${requestId}/status`;
-  const resultUrl = `${FAL_BASE}/${FAL_MODEL}/requests/${requestId}`;
+  const model = useImg2Img ? FAL_MODEL_IMG2IMG : FAL_MODEL;
+  const statusUrl = `${FAL_BASE}/${model}/requests/${requestId}/status`;
+  const resultUrl = `${FAL_BASE}/${model}/requests/${requestId}`;
   const deadline = Date.now() + timeoutMs;
 
   while (Date.now() < deadline) {
@@ -170,13 +175,15 @@ async function generateSingleFormat(
   }
 
   // ── Attach bottle reference (img2img — product fidelity) ────────────────────
-  if (bottleImageBase64?.startsWith('data:image/')) {
+  // Use img2img model when bottle image is available for accurate product representation
+  const hasBottleImage = Boolean(bottleImageBase64?.startsWith('data:image/'));
+  if (hasBottleImage) {
     input.image_url = bottleImageBase64;
-    input.strength = 0.4;
+    input.strength = 0.35; // Low strength: keep character but guide bottle shape
   }
 
-  const requestId = await submitToQueue(input);
-  const imageUrl = await pollUntilDone(requestId);
+  const requestId = await submitToQueue(input, hasBottleImage);
+  const imageUrl = await pollUntilDone(requestId, 110_000, hasBottleImage);
 
   return {
     format: ac.format,
