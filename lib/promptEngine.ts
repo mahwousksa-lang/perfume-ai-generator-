@@ -1,96 +1,143 @@
+// ============================================================
+// lib/promptEngine.ts  — Mahwous Perfume AI Campaign Generator
+// ============================================================
 // @ts-nocheck
-// ============================================================
-// lib/promptEngine.ts
-// Generates hyper-detailed, consistent image prompts.
-// ============================================================
 
-import type { GenerateParams, Vibe, Attire } from "./types";
+import type { GenerationRequest } from './types';
 
-// ─── CHARACTER DEFINITION (Mahwous 3D Mascot) ───────────────────────────────────
-const CHARACTER_BASE = `
-  (hyper-detailed 3D mascot character, consistent features:1.5), official Mahwous mascot,
-  (Pixar/Disney CGI style:1.4), large cartoonish head, big expressive warm brown eyes,
-  thick straight black eyebrows, (well-defined full black beard covering chin and cheeks:1.3),
-  black hair neatly swept back with a single strand falling onto the forehead,
-  (smooth olive skin 3D texture:1.2)
-`.trim();
+// ─── MAHWOUS CHARACTER (ثابت في كل صورة) ────────────────────────────────────
+const CHARACTER_BASE = `3D Pixar Disney CGI animated character, the official Mahwous mascot, large rounded cartoon head with smooth olive skin, thick straight black eyebrows, big warm expressive brown eyes, neat full black beard covering chin and cheeks, black hair neatly swept back, crisp white Saudi thobe with a stylish grey vest sadiri waistcoat, sitting relaxed and confident in a luxurious golden armchair`;
 
-// ─── PERFUME BOTTLE DEFINITION ───────────────────────────────────────────────────
-function getBottleDescription(perfumeName: string): string {
-  const lower = perfumeName.toLowerCase();
-  if (lower.includes("dior joy")) {
-    return `
-      (perfectly rendered photorealistic Dior JOY Eau de Parfum Intense bottle:1.6),
-      (cylindrical transparent glass bottle with a soft pink liquid:1.4),
-      (intricate silver threaded cap with a magnetic look:1.5), prominent silver "JOY" text
-      with "DIOR" inside the "O", realistic glass reflections and transparency, held delicately.
-    `.trim();
+// ─── BOTTLE DESCRIPTIONS ─────────────────────────────────────────────────────
+function getBottleDescription(name: string, brand: string): string {
+  const lower = (name + ' ' + brand).toLowerCase();
+
+  if ((lower.includes('joy') && lower.includes('dior')) || lower.includes('ديور جوي')) {
+    return `holding up a PHOTOREALISTIC Dior JOY Eau de Parfum Intense bottle, cylindrical transparent glass bottle filled with deep pink liquid, body has sculpted diamond-cut faceted geometric patterns, tall cylindrical silver ribbed knurled cap, large 3D silver letters JOY on front with DIOR inscribed inside the O, text EAU DE PARFUM INTENSE below, realistic glass reflections and light refractions`;
   }
-  // Add other specific bottle descriptions here...
-  return `(a photorealistic perfume bottle representing ${perfumeName}:1.4)`;
+
+  if (lower.includes('good girl') || lower.includes('carolina herrera')) {
+    return `holding up a PHOTOREALISTIC Carolina Herrera Good Girl perfume bottle, iconic stiletto high-heel shaped bottle in deep burgundy red glass, black butterfly-shaped cap on top, gold metallic base forming the heel, GOOD GIRL text in gold on the front, realistic glass and metal reflections`;
+  }
+
+  if (lower.includes('bvlgari') || lower.includes('bulgari') || lower.includes('بولغاري')) {
+    return `holding up a PHOTOREALISTIC Bvlgari perfume bottle, sleek modern glass bottle with silver metallic accents, BVLGARI logo engraved on the front, premium luxury packaging with clean geometric lines, realistic glass transparency and reflections`;
+  }
+
+  if (lower.includes('oud') || lower.includes('عود') || lower.includes('bois')) {
+    return `holding up a PHOTOREALISTIC luxury oud perfume bottle, ornate dark amber glass bottle with golden Arabic calligraphy, heavy crystal-cut base, golden metallic cap with intricate engravings, warm amber liquid visible through the glass, premium Middle Eastern luxury packaging`;
+  }
+
+  if (lower.includes('chanel') || lower.includes('شانيل')) {
+    return `holding up a PHOTOREALISTIC Chanel perfume bottle, iconic rectangular clear glass bottle with black cap, CHANEL logo in black letters on front, minimalist elegant design, realistic glass reflections`;
+  }
+
+  if (lower.includes('versace') || lower.includes('فيرساتشي')) {
+    return `holding up a PHOTOREALISTIC Versace perfume bottle, bold gold and black design, Medusa head emblem on the cap, luxurious metallic finish, realistic reflections`;
+  }
+
+  // Generic high-quality bottle
+  const bottleName = `${brand} ${name}`.trim();
+  return `holding up a PHOTOREALISTIC ${bottleName} perfume bottle, elegant premium glass bottle with clear label showing the brand name "${brand}" and product name "${name}", luxury packaging with realistic glass reflections and light play`;
 }
 
-// ─── SCENE & STYLE DEFINITIONS ────────────────────────────────────────────────────
-const VIBE_MAP: Record<Vibe, string> = {
-  majlis: `
-    (luxurious modern Saudi majlis:1.4), opulent Arabian interior design,
-    (ornate geometric patterns, plush carpets, and elegant seating:1.2),
-    warm ambient lighting from traditional lanterns, a sense of quiet sophistication.
-  `.trim(),
-  // Add other vibes here...
-};
+// ─── SCENE / BACKGROUND ──────────────────────────────────────────────────────
+function getSceneDescription(notes?: string[]): string {
+  const notesList = notes || [];
+  const hasFloral = notesList.some(n => /rose|jasmine|floral|flower|ورد|ياسمين|زهر/i.test(n));
+  const hasOud = notesList.some(n => /oud|wood|sandalwood|عود|خشب|صندل/i.test(n));
+  const hasOcean = notesList.some(n => /ocean|sea|marine|aqua|بحر|مائي/i.test(n));
+  const hasCitrus = notesList.some(n => /citrus|lemon|bergamot|حمضيات|ليمون|برغموت/i.test(n));
 
-const ATTIRE_MAP: Record<Attire, string> = {
-  saudi_thobe_vest: `
-    wearing a crisp white Saudi thobe and a stylish grey vest (sadiri), looking elegant and relaxed.
-  `.trim(),
-  // Add other attires here...
-};
+  if (hasFloral) {
+    return `luxurious marble palace room with tall arched windows, deep emerald green velvet curtains, pink roses and white flowers visible through the window, warm golden sunset light streaming in, golden Arabic coffee pot dallah and small white coffee cups on a side table`;
+  }
 
-// ─── EFFECTS DEFINITION ──────────────────────────────────────────────────────────
-function getEffects(notes: string[]): string {
-  if (!notes || notes.length === 0) return "";
-  const effects = notes.map(note => `(${note} scent notes flying around:1.2)`).join(", ");
-  return `
-    (magical scent notes swirling around the character and the bottle:1.3), ${effects},
-    (glowing particles and soft smoke effects:1.1)
-  `.trim();
+  if (hasOud) {
+    return `opulent Arabian royal palace interior, dark wood paneling with golden geometric Islamic patterns, warm amber lighting from ornate brass lanterns, rich Persian carpets, incense smoke rising gently, golden Arabic coffee pot dallah on a side table`;
+  }
+
+  if (hasOcean) {
+    return `modern luxury penthouse with floor-to-ceiling ocean view windows, crystal blue sea visible in the background, white marble interior with silver accents, cool blue ambient lighting, fresh coastal atmosphere`;
+  }
+
+  // Default: elegant Saudi majlis
+  return `luxurious marble palace room with tall arched windows, deep emerald green velvet curtains, pink roses and white flowers visible through the window, warm golden sunset light streaming in, golden Arabic coffee pot dallah and small white coffee cups on a side table`;
 }
 
-// ─── QUALITY & RENDER SETTINGS ──────────────────────────────────────────────────
-const QUALITY_SETTINGS = `
-  (8K, ultra-high-res, photorealistic, masterpiece:1.3), cinematic lighting,
-  (global illumination, subsurface scattering, physically-based rendering:1.2),
-  Octane render quality, Unreal Engine 5, sharp focus, vibrant colors.
-`.trim();
+// ─── FLOATING SCENT EFFECTS ───────────────────────────────────────────────────
+function getScentEffects(notes?: string[]): string {
+  if (!notes || notes.length === 0) {
+    return `soft golden sparkles and pink smoke wisps swirling magically around the character`;
+  }
 
-const NEGATIVE_PROMPT = `
-  (deformed, distorted, disfigured:1.3), poorly drawn, bad anatomy, wrong anatomy,
-  extra limb, missing limb, floating limbs, (mutated hands and fingers:1.4),
-  disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation,
-  text, watermark, signature, jpeg artifacts, low quality, error, incoherent.
-`.trim();
+  const effects: string[] = [];
+  for (const note of notes.slice(0, 5)) {
+    const n = note.toLowerCase();
+    if (/rose|ورد/.test(n)) effects.push('floating pink rose petals');
+    else if (/jasmine|ياسمين/.test(n)) effects.push('floating white jasmine flowers');
+    else if (/lemon|citrus|ليمون|حمضيات/.test(n)) effects.push('floating lemon slices');
+    else if (/oud|عود/.test(n)) effects.push('floating oud wood chips');
+    else if (/sandalwood|صندل/.test(n)) effects.push('floating sandalwood pieces');
+    else if (/vanilla|فانيليا/.test(n)) effects.push('floating vanilla pods');
+    else if (/musk|مسك/.test(n)) effects.push('soft white musk particles');
+    else if (/bergamot|برغموت/.test(n)) effects.push('floating bergamot slices');
+    else effects.push(`floating ${note} particles`);
+  }
 
-// ─── PROMPT GENERATION ENGINE ───────────────────────────────────────────────────
-export function generatePrompt(params: GenerateParams): { prompt: string; negative_prompt: string } {
-  const { perfumeName, vibe, attire, notes } = params;
+  return `${effects.join(', ')}, soft pink and golden smoke wisps swirling magically, golden sparkles`;
+}
 
-  const bottleDescription = getBottleDescription(perfumeName);
-  const vibeDescription = VIBE_MAP[vibe] || VIBE_MAP.majlis;
-  const attireDescription = ATTIRE_MAP[attire] || ATTIRE_MAP.saudi_thobe_vest;
-  const effectsDescription = getEffects(notes);
+// ─── MAIN PROMPT BUILDER ──────────────────────────────────────────────────────
+export function buildPrompt(request: GenerationRequest): string {
+  const { perfumeData, vibe = '', attire = '' } = request;
+  const { name = '', brand = '', notes = [] } = perfumeData || {};
 
-  const finalPrompt = [
+  const bottleDesc = getBottleDescription(name, brand);
+  const sceneDesc = getSceneDescription(notes);
+  const scentEffects = getScentEffects(notes);
+
+  // Trigger word first (for LoRA consistency)
+  const triggerWord = (process.env.NEXT_PUBLIC_DEFAULT_LORA_TRIGGER || '').trim();
+
+  const parts = [
+    triggerWord,
     CHARACTER_BASE,
-    attireDescription,
-    `The character is sitting comfortably in a chair, holding up the ${bottleDescription}`,
-    `The scene is a ${vibeDescription}`,
-    effectsDescription,
-    QUALITY_SETTINGS,
-  ].join(", ").replace(/\s+/g, " ");
+    bottleDesc,
+    `Background: ${sceneDesc}`,
+    `Floating around: ${scentEffects}`,
+    `Ultra-realistic 8K 3D render, Octane Render, cinematic lighting, masterpiece, award-winning commercial photography quality, sharp focus, vibrant colors, global illumination, subsurface scattering`,
+  ].filter(Boolean);
 
+  return parts.join(', ').replace(/\s+/g, ' ').trim();
+}
+
+// ─── NEGATIVE PROMPT ──────────────────────────────────────────────────────────
+export function buildNegativePrompt(): string {
+  return [
+    'deformed, distorted, disfigured, poorly drawn, bad anatomy, wrong anatomy',
+    'extra limb, missing limb, floating limbs, mutated hands and fingers',
+    'disconnected limbs, mutation, mutated, ugly, disgusting, blurry, amputation',
+    'text, watermark, signature, jpeg artifacts, low quality, error, incoherent',
+    'realistic human face, photorealistic skin, real person, photograph',
+    'multiple characters, crowd, duplicate character',
+    'wrong bottle shape, incorrect label, blurry bottle, distorted perfume bottle',
+  ].join(', ');
+}
+
+// ─── Legacy export for backward compatibility ─────────────────────────────────
+export function generatePrompt(params: any): { prompt: string; negative_prompt: string } {
+  const request: GenerationRequest = {
+    perfumeData: {
+      name: params?.perfumeName || '',
+      brand: params?.brand || '',
+      notes: params?.notes || [],
+    },
+    vibe: params?.vibe || '',
+    attire: params?.attire || '',
+  };
   return {
-    prompt: finalPrompt,
-    negative_prompt: NEGATIVE_PROMPT,
+    prompt: buildPrompt(request),
+    negative_prompt: buildNegativePrompt(),
   };
 }
