@@ -104,3 +104,19 @@ export interface GenerationProgress {
   post: 'pending' | 'generating' | 'done' | 'error';
   landscape: 'pending' | 'generating' | 'done' | 'error';
 }
+
+// Video Generation Types
+export interface VideoGenerationResult {
+  videoId: string;
+  status: "pending" | "processing" | "succeeded" | "failed";
+  url?: string;
+}
+
+// Video Scenario Types
+export interface VideoScenario {
+  platform: string;
+  hook: string;
+  action: string;
+  voiceover: string;
+  cta: string;
+}
