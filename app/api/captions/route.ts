@@ -2,6 +2,7 @@
 // app/api/captions/route.ts
 // POST /api/captions
 // Generates Arabic social media captions for 15 platform usages.
+// v2: SEO optimized — trending hashtags, smart product link handling
 // Priority: OpenAI → Claude → Gemini → Static Fallback
 // ============================================================
 
@@ -12,8 +13,11 @@ export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
 
 const WHATSAPP_NUMBER = '+966553964135';
-const WHATSAPP_LINK = `https://wa.me/966553964135`;
+const WHATSAPP_LINK = 'https://wa.me/966553964135';
 const STORE_URL = 'https://mahwous.com';
+
+// Max URL length for captions — if product URL is longer, omit it
+const MAX_URL_LENGTH = 80;
 
 interface CaptionRequest {
   perfumeData: PerfumeData;
@@ -22,15 +26,41 @@ interface CaptionRequest {
   productUrl: string;
 }
 
+// Smart link: only include product URL if short enough
+function smartProductLink(productUrl: string): string {
+  const url = productUrl || STORE_URL;
+  if (url.length > MAX_URL_LENGTH) return STORE_URL;
+  return url;
+}
+
+// ═══ SEO Trending Hashtags 2025/2026 ═══
+const TRENDING_HASHTAGS_AR = [
+  '#عطور', '#عطور_فاخرة', '#عطور_رجالية', '#عطور_نسائية',
+  '#عطور_نيش', '#عطور_اصلية', '#عطور_خليجية', '#عطور_السعودية',
+  '#بارفيوم', '#عود', '#مسك', '#دهن_عود', '#عطر_اليوم',
+  '#توصيات_عطور', '#مراجعة_عطور', '#افضل_عطر', '#عطر_رجالي',
+  '#عطر_نسائي', '#فخامة', '#اناقة', '#ستايل', '#الرياض',
+  '#جدة', '#السعودية', '#متجر_الكتروني', '#توصيل',
+];
+
+const TRENDING_HASHTAGS_EN = [
+  '#perfume', '#fragrance', '#luxury', '#niche', '#perfumetok',
+  '#scentoftheday', '#fragrancecommunity', '#perfumecollection',
+  '#luxuryfragrance', '#nicheperfume', '#perfumereview',
+  '#bestperfume', '#scentrecommendation', '#oud', '#musk',
+  '#arabiaperfume', '#perfumeaddict', '#fragrancelover',
+  '#fyp', '#foryou', '#viral', '#trending',
+];
+
 function buildPrompt(perfumeData: PerfumeData, vibe: string, attire: string, productUrl: string): string {
   const genderLabel =
     perfumeData.gender === 'men' ? 'للرجال' :
     perfumeData.gender === 'women' ? 'للنساء' : 'للجنسين';
 
-  const productLink = productUrl || STORE_URL;
+  const productLink = smartProductLink(productUrl);
 
-  return `أنت أفضل خبير تسويق عطور فاخرة في العالم العربي، تعمل لدى أكبر البراندات العالمية.
-مهمتك: كتابة كابشنات احترافية بمستوى عالمي لكل منصة سوشال ميديا.
+  return `أنت أفضل خبير تسويق عطور فاخرة ومتخصص SEO في العالم العربي.
+مهمتك: كتابة كابشنات احترافية مُحسّنة للبحث والظهور لكل منصة.
 
 ═══ معلومات العطر ═══
 - الاسم: ${perfumeData.name}
@@ -45,32 +75,33 @@ function buildPrompt(perfumeData: PerfumeData, vibe: string, attire: string, pro
 - واتساب: ${WHATSAPP_NUMBER}
 - رابط واتساب: ${WHATSAPP_LINK}
 - رابط المنتج: ${productLink}
-- المتجر: مهووس للعطور والمنتجات الفاخرة
+- المتجر: مهووس (متجر إلكتروني — الطلب أونلاين فقط)
 
-═══ المطلوب: كابشن لكل منصة واستخدام ═══
+═══ قواعد SEO مهمة ═══
+- استخدم كلمات البحث الأكثر تصدراً في كل منصة
+- الهاشتاقات يجب أن تكون مزيج من الأكثر بحثاً عربي وإنجليزي
+- أضف كلمات مفتاحية طبيعية في النص (اسم العطر، الماركة، نوع العطر)
+- لا تضع رابط المنتج إذا كان طويلاً — استخدم رابط المتجر العام أو واتساب فقط
+- اذكر "مهووس" مرة واحدة فقط في كل كابشن — لا تكرار
+- لا تقل "زوروا" أو "زيارة" — مهووس متجر إلكتروني فقط (اطلب/اطلبه)
 
-1. instagram_post: كابشن طويل شاعري فاخر + 10-15 هاشتاق عربي وإنجليزي + إيموجي محدود + CTA + رابط واتساب + رابط المنتج. أسلوب: فخامة وأناقة.
-2. instagram_story: جملة قصيرة جذابة (سطر أو سطرين) + CTA سريع + رابط. أسلوب: مباشر وأنيق.
-3. facebook_post: كابشن متوسط تفاعلي + سؤال للجمهور + 5-7 هاشتاقات + رابط واتساب. أسلوب: ودي وتفاعلي.
-4. facebook_story: جملة قصيرة + CTA. أسلوب: بسيط ومباشر.
-5. twitter: تغريدة قصيرة حادة مؤثرة (أقل من 280 حرف) + 3-4 هاشتاقات + رابط. أسلوب: مباشر وقوي.
-6. linkedin: كابشن مهني احترافي يركز على قيمة العلامة التجارية والحرفية + 5 هاشتاقات إنجليزية. أسلوب: مهني وراقي.
-7. snapchat: قصير جداً وشبابي + إيموجي + رابط واتساب. أسلوب: عفوي وجذاب.
-8. tiktok: هوك قوي في أول كلمة + حركي + ترند + هاشتاقات شبابية. أسلوب: ترند وشبابي.
-9. pinterest: وصف SEO محسّن بالعربي والإنجليزي + كلمات مفتاحية + رابط. أسلوب: وصفي ومحسّن للبحث.
-10. telegram: مختصر ومباشر + رابط المنتج + رابط واتساب + السعر. أسلوب: إخباري ومباشر.
-11. haraj: وصف تجاري مباشر بأسلوب حراج + السعر + التوصيل + الضمان + رقم التواصل. أسلوب: تجاري سعودي.
-12. truth_social: كابشن عربي مختصر + إنجليزي + هاشتاقات. أسلوب: مختصر وأنيق.
-13. whatsapp: رسالة واتساب جاهزة للإرسال + تفاصيل المنتج + السعر + رابط. أسلوب: رسالة شخصية مهنية.
-14. youtube_thumbnail: لا يحتاج كابشن (اكتب "—").
-15. youtube_shorts: لا يحتاج كابشن (اكتب "—").
+═══ المطلوب: كابشن لكل منصة ═══
 
-═══ قواعد عامة ═══
-- كل كابشن يجب أن يكون مختلف تماماً عن الآخر — لا تكرار
-- استخدم اللهجة السعودية/الخليجية عند المناسب
-- الهاشتاقات يجب أن تكون مزيج عربي وإنجليزي
-- كل كابشن يجب أن يناسب جمهور المنصة وثقافتها
-- المستوى المطلوب: كأننا أكبر براند عطور في العالم
+1. instagram_post: كابشن طويل شاعري فاخر + 12-15 هاشتاق (أكثرها بحثاً) + CTA + رابط واتساب. لا إيموجي زائد.
+2. instagram_story: جملة قصيرة جذابة (سطر أو سطرين) + CTA سريع + رابط.
+3. facebook_post: كابشن متوسط تفاعلي + سؤال للجمهور + 5-7 هاشتاقات + رابط واتساب.
+4. facebook_story: جملة قصيرة + CTA.
+5. twitter: تغريدة قصيرة حادة (أقل من 280 حرف) + 3-4 هاشتاقات ترند + رابط.
+6. linkedin: كابشن مهني بالإنجليزي + 5 هاشتاقات إنجليزية ترند.
+7. snapchat: قصير جداً وشبابي بلهجة سعودية + رابط واتساب.
+8. tiktok: هوك قوي أول كلمة + هاشتاقات الأكثر بحثاً في تيك توك (#perfumetok #fyp #عطور).
+9. pinterest: وصف SEO محسّن بالعربي والإنجليزي + كلمات مفتاحية + رابط.
+10. telegram: مختصر + رابط المنتج + واتساب + السعر.
+11. haraj: وصف تجاري بأسلوب حراج + السعر + التوصيل + رقم التواصل.
+12. truth_social: كابشن عربي مختصر + إنجليزي + هاشتاقات.
+13. whatsapp: رسالة واتساب جاهزة + تفاصيل + سعر + رابط.
+14. youtube_thumbnail: اكتب "—".
+15. youtube_shorts: اكتب "—".
 
 أجب بـ JSON فقط بدون أي نص إضافي:
 {
@@ -94,26 +125,27 @@ function buildPrompt(perfumeData: PerfumeData, vibe: string, attire: string, pro
 
 function buildFallbackCaptions(perfumeData: PerfumeData, productUrl: string): PlatformCaptions {
   const brand = perfumeData.brand?.replace(/\s/g, '') || 'mahwous';
-  const notes = perfumeData.notes || 'نوتات ساحرة تأسر الحواس';
-  const productLink = productUrl || STORE_URL;
+  const notes = perfumeData.notes || 'مكونات فاخرة تأسر الحواس';
+  const productLink = smartProductLink(productUrl);
   const price = perfumeData.price || '';
+  const gender = perfumeData.gender === 'men' ? 'رجالي' : perfumeData.gender === 'women' ? 'نسائي' : '';
 
   return {
-    instagram_post: `✨ ${perfumeData.name} من ${perfumeData.brand}\n\nعطرٌ يُجسّد روح الفخامة ويُحكي قصة الأناقة الأصيلة ✨\n\n🌸 المكونات: ${notes}\n${price ? `💰 السعر: ${price}\n` : ''}\n🛒 اطلب الآن:\n📞 واتساب: ${WHATSAPP_NUMBER}\n💬 ${WHATSAPP_LINK}\n🔗 المنتج: ${productLink}\n\n#${brand} #عطور_فاخرة #مهووس_للعطور #perfume #luxury #عطور_خليجية #عطور_رجالية #فخامة #عطر #fragrance #niche_perfume #عطور_نيش #السعودية #الرياض`,
-    instagram_story: `✨ ${perfumeData.name}\nمن ${perfumeData.brand}\n\n⬆️ اسحب للأعلى للطلب\n${WHATSAPP_LINK}`,
-    facebook_post: `${perfumeData.name} من ${perfumeData.brand} ✨\n\nعطر يستحق التجربة — ${notes}\n${price ? `السعر: ${price}\n` : ''}\nما رأيكم؟ جربتوه قبل؟ 💬\n\n📞 للطلب: ${WHATSAPP_LINK}\n🔗 ${productLink}\n\n#عطور_فاخرة #${brand} #مهووس #عطور`,
-    facebook_story: `✨ ${perfumeData.name}\n${perfumeData.brand}\nاطلب الآن 👇\n${WHATSAPP_LINK}`,
-    twitter: `✨ ${perfumeData.name} — ${perfumeData.brand}\n\nأناقةٌ لا تُنسى في كل رشّة 🌸\n\n🛒 ${WHATSAPP_LINK}\n\n#عطور_فاخرة #${brand} #مهووس #perfume`,
-    linkedin: `Introducing ${perfumeData.name} by ${perfumeData.brand}\n\nA masterpiece of perfumery that embodies luxury and sophistication. ${notes}\n\nDiscover more: ${productLink}\n\n#Luxury #Perfume #${brand} #Fragrance #NichePerfume`,
-    snapchat: `💛 ${perfumeData.name} وصل!\nرائحة فاخرة 🌟\nاطلب الحين 👇\n${WHATSAPP_LINK}`,
-    tiktok: `🔥 عطر ${perfumeData.name} من ${perfumeData.brand} — هذا اللي كنت تدور عليه!\n✨ ${notes}\n📦 اطلب الحين: ${WHATSAPP_LINK}\n#عطور #ترند #${brand} #مهووس_للعطور #fyp #foryou #عطور_فاخرة`,
-    pinterest: `${perfumeData.name} by ${perfumeData.brand} — Luxury Perfume | عطر فاخر\n\n${notes}\n\nPerfect for: ${perfumeData.gender === 'men' ? 'Men' : perfumeData.gender === 'women' ? 'Women' : 'Unisex'}\n\nShop now: ${productLink}\n\n#LuxuryPerfume #${brand} #Fragrance #عطور_فاخرة #NichePerfume`,
-    telegram: `🌟 ${perfumeData.name}\n${perfumeData.brand}\n\n${notes}\n${price ? `💰 ${price}\n` : ''}\n🛒 اطلب: ${productLink}\n📞 واتساب: ${WHATSAPP_LINK}`,
-    haraj: `للبيع: ${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\n✅ أصلي 100%\n✅ توصيل لجميع مناطق المملكة\n✅ الدفع عند الاستلام\n\n📞 للتواصل واتساب: ${WHATSAPP_NUMBER}\n${WHATSAPP_LINK}`,
-    truth_social: `✨ ${perfumeData.name} by ${perfumeData.brand}\n\nLuxury fragrance that speaks elegance\n\n🛒 ${productLink}\n\n#Perfume #Luxury #${brand}`,
+    instagram_post: `${perfumeData.name} من ${perfumeData.brand}\n\nتجربة عطرية استثنائية تجمع بين الفخامة والأصالة. مكوناته المنتقاة بعناية تمنحك حضوراً لا يُنسى وثباتاً يدوم طوال اليوم.\n\nالمكونات: ${notes}\n${price ? `السعر: ${price}\n` : ''}\nاطلبه الحين من مهووس:\n${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #fragrance #luxury #عطور_اصلية #عطور_نيش #nicheperfume #عطر_اليوم #توصيات_عطور #perfumetok #عطور_السعودية #الرياض #fragrancecommunity`,
+    instagram_story: `${perfumeData.name}\nمن ${perfumeData.brand}\n\nاطلبه الحين\n${WHATSAPP_LINK}`,
+    facebook_post: `${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nوش رايكم فيه؟ جربتوه قبل؟\n\nللطلب: ${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #عطور_اصلية #مهووس`,
+    facebook_story: `${perfumeData.name}\n${perfumeData.brand}\nاطلبه الحين\n${WHATSAPP_LINK}`,
+    twitter: `${perfumeData.name} من ${perfumeData.brand}\n\nريحة فخمة وثبات خرافي\n\n${WHATSAPP_LINK}\n\n#عطور #${brand} #perfume #عطور_فاخرة`,
+    linkedin: `Introducing ${perfumeData.name} by ${perfumeData.brand}\n\nA masterpiece of perfumery that embodies luxury and sophistication.\n\nDiscover more: ${productLink}\n\n#Luxury #Perfume #${brand} #Fragrance #NichePerfume`,
+    snapchat: `${perfumeData.name} وصل!\nريحة فخمة من ${perfumeData.brand}\nاطلبه الحين\n${WHATSAPP_LINK}`,
+    tiktok: `هالريحة غيرت كل شي!\n${perfumeData.name} من ${perfumeData.brand}\n\nاطلبه من مهووس: ${WHATSAPP_LINK}\n\n#عطور #perfumetok #${brand} #fyp #foryou #عطور_فاخرة #viral #scentoftheday #trending`,
+    pinterest: `${perfumeData.name} by ${perfumeData.brand} — Luxury ${gender} Perfume\n\n${notes}\n\nShop: ${productLink}\n\n#LuxuryPerfume #${brand} #Fragrance #عطور_فاخرة #NichePerfume #perfumecollection`,
+    telegram: `${perfumeData.name}\n${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nاطلب: ${productLink}\nواتساب: ${WHATSAPP_LINK}`,
+    haraj: `للبيع: ${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\n- أصلي 100%\n- توصيل لجميع مناطق المملكة\n- الدفع عند الاستلام\n\nللتواصل واتساب: ${WHATSAPP_NUMBER}\n${WHATSAPP_LINK}`,
+    truth_social: `${perfumeData.name} by ${perfumeData.brand}\n\nLuxury fragrance that speaks elegance\n\n${productLink}\n\n#Perfume #Luxury #${brand}`,
     youtube_thumbnail: '—',
     youtube_shorts: '—',
-    whatsapp: `السلام عليكم 🌟\n\nعطر ${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `💰 السعر: ${price}\n` : ''}\n🔗 رابط المنتج: ${productLink}\n\nللطلب تواصل معنا مباشرة على هذا الرقم ✨`,
+    whatsapp: `السلام عليكم\n\n${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nرابط المنتج: ${productLink}\n\nللطلب تواصل معنا مباشرة`,
   };
 }
 
@@ -130,7 +162,7 @@ async function callOpenAI(prompt: string): Promise<string> {
     messages: [
       {
         role: 'system',
-        content: 'أنت خبير تسويق عطور فاخر بمستوى عالمي. أجب بـ JSON فقط بدون أي نص إضافي.',
+        content: 'أنت خبير تسويق عطور فاخر ومتخصص SEO بمستوى عالمي. أجب بـ JSON فقط بدون أي نص إضافي. استخدم الهاشتاقات الأكثر بحثاً وتصدراً في كل منصة. لا تكرر كلمة مهووس أكثر من مرة في كل كابشن. مهووس متجر إلكتروني فقط — لا تقل زوروا.',
       },
       { role: 'user', content: prompt },
     ],
