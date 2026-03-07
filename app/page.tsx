@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import {
   ArrowLeft, Loader2, Link2, Sparkles, Video, Image, Upload, X,
-  Calendar, Download, FileText, Save, Clock, Package,
+  Calendar, Download, FileText, Save, Clock, Package, Brain,
 } from 'lucide-react';
 
 import type {
@@ -25,6 +25,10 @@ import SmartSchedulePanel from '@/components/SmartSchedulePanel';
 import PostHistory from '@/components/PostHistory';
 import { addToQueue, getQueue, downloadCSV, ALL_PLATFORMS, type QueuedPost } from '@/lib/contentQueue';
 import { sendToMakeWebhook, getWebhookUrl, setWebhookUrl, isWebhookConfigured } from '@/lib/makeWebhook';
+import MetricoolDashboard from '@/components/MetricoolDashboard';
+import SmartPublishButton from '@/components/SmartPublishButton';
+import { optimizeCaption } from '@/lib/selfLearningEngine';
+import { schedulePost, isMetricoolConfigured } from '@/lib/metricoolClient';
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -34,7 +38,7 @@ export default function HomePage() {
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [captionResult, setCaptionResult] = useState<CaptionResult | null>(null);
   const [scenarios, setScenarios] = useState<VideoScenario[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'videos' | 'schedule'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'videos' | 'schedule' | 'intelligence'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
 
   // ── Video generation state ──────────────────────────────────────────────
@@ -812,16 +816,35 @@ export default function HomePage() {
               </div>
             </div>
 
-            {/* Tab Navigation — 3 tabs مع وصف */}
+            {/* ══════ Smart Publish — النشر الذكي ══════ */}
+            {perfumeData && (
+              <SmartPublishButton
+                perfumeData={perfumeData}
+                productUrl={productUrl}
+                captions={(captionResult?.captions || {}) as Record<string, string>}
+                imageUrls={{
+                  story: generationResult.images.find(i => i.format === 'story')?.url,
+                  post: generationResult.images.find(i => i.format === 'post')?.url,
+                  landscape: generationResult.images.find(i => i.format === 'landscape')?.url,
+                }}
+                videoUrls={{
+                  vertical: videoInfos.find(v => v.aspectRatio === '9:16' && v.videoUrl)?.videoUrl || undefined,
+                  horizontal: videoInfos.find(v => v.aspectRatio === '16:9' && v.videoUrl)?.videoUrl || undefined,
+                }}
+              />
+            )}
+
+            {/* Tab Navigation — 4 tabs مع وصف */}
             <div className="flex gap-1 p-1.5 bg-[var(--obsidian-light)] rounded-xl">
               {[
                 { key: 'images', label: 'الصور والكابشنات', desc: '3 صور + كابشن لكل منصة', icon: Image },
                 { key: 'videos', label: 'الفيديو', desc: 'عمودي + أفقي بصوت عربي', icon: Video },
                 { key: 'schedule', label: 'الجدولة والنشر', desc: 'جدولة ذكية + تاريخ النشر', icon: Calendar },
+                { key: 'intelligence', label: 'مركز الذكاء', desc: 'تحليلات + تعلم ذاتي + منافسون', icon: Brain },
               ].map(({ key, label, desc, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as 'images' | 'videos' | 'schedule')}
+                  onClick={() => setActiveTab(key as 'images' | 'videos' | 'schedule' | 'intelligence')}
                   className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 px-4 rounded-lg transition-all ${
                     activeTab === key
                       ? 'bg-[var(--gold)] text-black'
@@ -895,6 +918,11 @@ export default function HomePage() {
                 />
                 <PostHistory />
               </div>
+            )}
+
+            {/* ══════ Intelligence Tab ══════ */}
+            {activeTab === 'intelligence' && (
+              <MetricoolDashboard />
             )}
           </div>
         )}
