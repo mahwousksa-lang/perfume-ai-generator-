@@ -469,7 +469,7 @@ export default function HomePage() {
     toast.success(`تم تصدير ${queue.length} منشور إلى CSV`);
   };
 
-  // ── إرسال مباشر إلى Make.com Webhook → Google Sheets ──────────────────
+  // ── إرسال مباشر إلى Make.com → النشر على المنصات ────────────────────
   const handleSendToMake = async () => {
     if (!isWebhookConfigured()) {
       setShowWebhookSettings(true);
@@ -512,7 +512,7 @@ export default function HomePage() {
 
       const result = await sendToMakeWebhook(post);
       if (result.success) {
-        toast.success('تم الإرسال إلى Google Sheets عبر Make.com بنجاح!');
+        toast.success('تم الإرسال إلى Make.com بنجاح — جاري النشر على المنصات!');
       } else {
         toast.error(result.message);
       }
@@ -772,7 +772,7 @@ export default function HomePage() {
                 {showWebhookSettings && (
                   <div className="mb-4 p-4 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)] space-y-3">
                     <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                      أدخل رابط Webhook من Make.com — سيرسل التطبيق البيانات مباشرة إلى Google Sheets
+                      رابط Webhook من Make.com — التطبيق يرسل البيانات مباشرة للنشر على المنصات
                     </p>
                     <div className="flex gap-2">
                       <input
@@ -806,7 +806,7 @@ export default function HomePage() {
                   {sendingToMake ? (
                     <><Loader2 size={16} className="animate-spin" /> جاري الإرسال...</>
                   ) : (
-                    <><Upload size={16} /> إرسال مباشر إلى Google Sheets عبر Make.com</>
+                    <><Upload size={16} /> نشر مباشر على المنصات عبر Make.com</>
                   )}
                 </button>
               </div>
