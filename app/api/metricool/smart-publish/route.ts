@@ -2,11 +2,13 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // POST /api/metricool/smart-publish — النشر الذكي عبر Metricool API
-// V4: إصلاح حقول API + التاريخ + الوسائط + تشخيص مفصل
+// V5: إصلاح مشكلة base64 — تحويل تلقائي إلى URLs عامة
 // ══════════════════════════════════════════════════════════════════════════════
 
 const METRICOOL_V2_BASE = 'https://app.metricool.com/api/v2';
 const METRICOOL_V1_BASE = 'https://app.metricool.com/api';
+
+const IMGBB_API_KEY = process.env.IMGBB_API_KEY || '';
 
 // ── جلب بيانات Metricool من البيئة ──────────────────────────────────────────
 function getServerCredentials() {
@@ -49,6 +51,114 @@ async function ensureBlogId(token: string, blogId: string): Promise<{ blogId: st
   }
 
   return { blogId: '', userId: '', connectedNetworks: [] };
+}
+
+// ══════════════════════════════════════════════════════════════════════════════
+// تحويل base64 إلى URL عام — Multi-provider with fallback
+// ══════════════════════════════════════════════════════════════════════════════
+
+function isBase64(url: string): boolean {
+  return url.startsWith('data:') || url.startsWith('/9j/') || url.startsWith('iVBOR');
+}
+
+function base64ToUint8Array(base64: string): { data: Uint8Array; mimeType: string } {
+  const match = base64.match(/^data:(image\/[a-z+]+);base64,(.+)$/i);
+  const raw = match ? match[2] : base64;
+  const mime = match ? match[1] : 'image/png';
+  const buf = Buffer.from(raw, 'base64');
+  return {
+    data: new Uint8Array(buf.buffer, buf.byteOffset, buf.byteLength),
+    mimeType: mime,
+  };
+}
+
+async function uploadToImgbb(base64Data: string): Promise<string | null> {
+  if (!IMGBB_API_KEY) return null;
+  try {
+    const cleanBase64 = base64Data.replace(/^data:image\/[a-z+]+;base64,/i, '');
+    const formData = new URLSearchParams();
+    formData.append('key', IMGBB_API_KEY);
+    formData.append('image', cleanBase64);
+    formData.append('name', `mahwous_${Date.now()}`);
+
+    const res = await fetch('https://api.imgbb.com/1/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data?.data?.url || data?.data?.display_url || null;
+    }
+  } catch (e) {
+    console.warn('[upload] imgbb error:', e);
+  }
+  return null;
+}
+
+async function uploadToFreeimage(base64Data: string): Promise<string | null> {
+  try {
+    const cleanBase64 = base64Data.replace(/^data:image\/[a-z+]+;base64,/i, '');
+    const formData = new URLSearchParams();
+    formData.append('key', '6d207e02198a847aa98d0a2a901485a5');
+    formData.append('source', cleanBase64);
+    formData.append('format', 'json');
+
+    const res = await fetch('https://freeimage.host/api/1/upload', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      return data?.image?.url || data?.image?.display_url || null;
+    }
+  } catch (e) {
+    console.warn('[upload] freeimage error:', e);
+  }
+  return null;
+}
+
+async function uploadToCatbox(base64Data: string): Promise<string | null> {
+  try {
+    const { data, mimeType } = base64ToUint8Array(base64Data);
+    const ext = mimeType.split('/')[1] || 'png';
+    const formData = new FormData();
+    formData.append('reqtype', 'fileupload');
+    formData.append('fileToUpload', new Blob([data as BlobPart], { type: mimeType }), `mahwous_${Date.now()}.${ext}`);
+
+    const res = await fetch('https://catbox.moe/user/api.php', {
+      method: 'POST',
+      body: formData,
+    });
+
+    if (res.ok) {
+      const url = await res.text();
+      if (url && url.startsWith('https://')) return url.trim();
+    }
+  } catch (e) {
+    console.warn('[upload] catbox error:', e);
+  }
+  return null;
+}
+
+async function convertBase64ToPublicUrl(base64: string): Promise<string> {
+  if (!isBase64(base64)) return base64; // Already a URL
+
+  console.log('[Smart Publish] Converting base64 to public URL...');
+
+  // Try providers in order
+  const url1 = await uploadToImgbb(base64);
+  if (url1) { console.log(`[Smart Publish] imgbb: ${url1}`); return url1; }
+
+  const url2 = await uploadToFreeimage(base64);
+  if (url2) { console.log(`[Smart Publish] freeimage: ${url2}`); return url2; }
+
+  const url3 = await uploadToCatbox(base64);
+  if (url3) { console.log(`[Smart Publish] catbox: ${url3}`); return url3; }
+
+  console.error('[Smart Publish] All upload providers failed!');
+  return base64; // Return original as last resort
 }
 
 // ── عبارات هوية مهووس ────────────────────────────────────────────────────────
@@ -115,22 +225,18 @@ function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>
     ? parseInt(bestTimes[platform].split(':')[0], 10)
     : (defaults[platform] || 20);
 
-  // حساب الوقت بتوقيت السعودية (UTC+3)
   const now = new Date();
-  const saudiOffset = 3 * 60; // +3 hours in minutes
+  const saudiOffset = 3 * 60;
   const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
   const saudiNow = new Date(utcNow + (saudiOffset * 60000));
 
-  // إنشاء التاريخ المجدول بتوقيت السعودية
   const scheduled = new Date(saudiNow);
   scheduled.setHours(hour, 0, 0, 0);
 
-  // إذا كان الوقت في الماضي، أضف يوم
   if (scheduled.getTime() <= saudiNow.getTime()) {
     scheduled.setDate(scheduled.getDate() + 1);
   }
 
-  // تنسيق التاريخ بدون timezone info
   const year = scheduled.getFullYear();
   const month = String(scheduled.getMonth() + 1).padStart(2, '0');
   const day = String(scheduled.getDate()).padStart(2, '0');
@@ -150,7 +256,7 @@ async function uploadMediaToMetricool(
   token: string,
   blogId: string
 ): Promise<string> {
-  if (!mediaUrl || mediaUrl.startsWith('data:')) return '';
+  if (!mediaUrl) return '';
 
   try {
     // Method 1: normalize/image/url
@@ -217,7 +323,7 @@ function selectMediaForPlatform(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// POST Handler — النشر الذكي V4
+// POST Handler — النشر الذكي V5 (مع تحويل base64 تلقائي)
 // ══════════════════════════════════════════════════════════════════════════════
 
 export async function POST(req: NextRequest) {
@@ -251,8 +357,6 @@ export async function POST(req: NextRequest) {
     );
 
     diagnostics.push(`blogId: ${blogId || 'NOT FOUND'}`);
-    diagnostics.push(`userId: ${userId || 'NOT FOUND'}`);
-    diagnostics.push(`connectedNetworks: ${JSON.stringify(connectedNetworks)}`);
 
     if (!blogId) {
       return NextResponse.json({
@@ -262,6 +366,36 @@ export async function POST(req: NextRequest) {
     }
 
     const finalUserId = serverCreds.userId || userId;
+
+    // ══════════════════════════════════════════════════════════════════
+    // تحويل جميع صور base64 إلى URLs عامة قبل النشر
+    // ══════════════════════════════════════════════════════════════════
+    const convertedImageUrls: Record<string, string> = {};
+    if (imageUrls) {
+      diagnostics.push('Converting base64 images to public URLs...');
+      for (const [key, url] of Object.entries(imageUrls)) {
+        if (url && typeof url === 'string') {
+          if (isBase64(url as string)) {
+            diagnostics.push(`  Converting image.${key} (base64 → public URL)...`);
+            try {
+              const publicUrl = await convertBase64ToPublicUrl(url as string);
+              convertedImageUrls[key] = publicUrl;
+              if (!isBase64(publicUrl)) {
+                diagnostics.push(`  ✅ image.${key}: ${publicUrl.substring(0, 80)}`);
+              } else {
+                diagnostics.push(`  ❌ image.${key}: conversion failed, still base64`);
+              }
+            } catch (e) {
+              convertedImageUrls[key] = url as string;
+              diagnostics.push(`  ❌ image.${key}: conversion error`);
+            }
+          } else {
+            convertedImageUrls[key] = url as string;
+            diagnostics.push(`  ✓ image.${key}: already a URL`);
+          }
+        }
+      }
+    }
 
     // المنصات المدعومة
     const METRICOOL_PLATFORMS = ['instagram', 'facebook', 'twitter', 'tiktok', 'linkedin', 'youtube', 'pinterest', 'google_business'];
@@ -278,23 +412,6 @@ export async function POST(req: NextRequest) {
     }
 
     diagnostics.push(`Target platforms: ${targetPlatforms.join(', ')}`);
-
-    // ── تشخيص الوسائط المرسلة ──────────────────────────────────────
-    diagnostics.push(`imageUrls received: ${JSON.stringify(imageUrls || {})}`.substring(0, 300));
-    diagnostics.push(`videoUrls received: ${JSON.stringify(videoUrls || {})}`.substring(0, 300));
-    const imgCount = imageUrls ? Object.values(imageUrls).filter(Boolean).length : 0;
-    const vidCount = videoUrls ? Object.values(videoUrls).filter(Boolean).length : 0;
-    diagnostics.push(`Total media: ${imgCount} images, ${vidCount} videos`);
-    if (imageUrls) {
-      Object.entries(imageUrls).forEach(([k, v]) => {
-        diagnostics.push(`  image.${k}: ${v ? String(v).substring(0, 80) : 'EMPTY'}`);
-      });
-    }
-    if (videoUrls) {
-      Object.entries(videoUrls).forEach(([k, v]) => {
-        diagnostics.push(`  video.${k}: ${v ? String(v).substring(0, 80) : 'EMPTY'}`);
-      });
-    }
 
     const results: Array<{
       platform: string;
@@ -331,39 +448,43 @@ export async function POST(req: NextRequest) {
           productUrl || '', perfumeName || '', perfumeBrand || ''
         );
 
-        // 3. اختيار وتحميل الوسائط
-        const selectedMedia = selectMediaForPlatform(platform, imageUrls || {}, videoUrls || {});
+        // 3. اختيار وتحميل الوسائط (استخدام الصور المحوّلة)
+        const selectedMedia = selectMediaForPlatform(platform, convertedImageUrls, videoUrls || {});
         const normalizedMedia: string[] = [];
 
         for (const mediaUrl of selectedMedia.urls) {
-          if (mediaUrl) {
+          if (mediaUrl && !isBase64(mediaUrl)) {
             try {
               const normalized = await uploadMediaToMetricool(mediaUrl, serverCreds.token, blogId);
               if (normalized) {
                 normalizedMedia.push(normalized);
               } else {
-                // fallback: استخدم الرابط الأصلي
                 normalizedMedia.push(mediaUrl);
-                diagnostics.push(`${platform}: normalize returned empty, using original URL`);
               }
             } catch (e) {
-              // fallback: استخدم الرابط الأصلي
               normalizedMedia.push(mediaUrl);
-              diagnostics.push(`${platform}: normalize error, using original URL`);
+            }
+          } else if (mediaUrl && isBase64(mediaUrl)) {
+            // Last attempt to convert base64
+            try {
+              const publicUrl = await convertBase64ToPublicUrl(mediaUrl);
+              if (!isBase64(publicUrl)) {
+                normalizedMedia.push(publicUrl);
+              }
+            } catch (e) {
+              diagnostics.push(`${platform}: failed to convert remaining base64 media`);
             }
           }
         }
 
-        diagnostics.push(`${platform}: media=${normalizedMedia.length}, isVideo=${selectedMedia.isVideo}, urls=${normalizedMedia.map(u => u.substring(0, 50)).join(', ')}`);
+        diagnostics.push(`${platform}: media=${normalizedMedia.length}, isVideo=${selectedMedia.isVideo}`);
 
-        // 4. تحديد وقت النشر — دائماً في المستقبل
+        // 4. تحديد وقت النشر
         const { dateTime, timezone } = autoSchedule !== false
           ? getOptimalDateTime(platform, bestTimes)
-          : getOptimalDateTime(platform); // حتى النشر الفوري يكون بعد 5 دقائق
+          : getOptimalDateTime(platform);
 
-        diagnostics.push(`${platform}: scheduledTime=${dateTime} ${timezone}`);
-
-        // 5. بناء payload — V2 API (حقول صحيحة فقط)
+        // 5. بناء payload
         const scheduledPost: Record<string, unknown> = {
           publicationDate: { dateTime, timezone },
           text: formattedText,
@@ -374,21 +495,17 @@ export async function POST(req: NextRequest) {
           draft: false,
         };
 
-        // إضافة الوسائط
         if (normalizedMedia.length > 0) {
           scheduledPost.media = normalizedMedia;
         }
 
-        // ══════ بيانات خاصة بكل منصة — حقول صحيحة فقط ══════
+        // ══════ بيانات خاصة بكل منصة ══════
         if (platform === 'facebook') {
           scheduledPost.facebookData = { type: 'POST' };
         }
 
         if (platform === 'instagram') {
-          // فقط autoPublish — بدون showReelsInFeed (حقل غير معروف)
-          scheduledPost.instagramData = {
-            autoPublish: true,
-          };
+          scheduledPost.instagramData = { autoPublish: true };
         }
 
         if (platform === 'tiktok') {
@@ -396,13 +513,12 @@ export async function POST(req: NextRequest) {
         }
 
         if (platform === 'youtube') {
-          // privacy بدلاً من privacyStatus
           scheduledPost.youtubeData = {
             title: `${perfumeName} | ${perfumeBrand} | مهووس ستور`,
             privacy: 'PUBLIC',
             madeForKids: false,
             type: selectedMedia.isVideo ? 'VIDEO' : 'SHORT',
-            category: '22', // People & Blogs
+            category: '22',
             tags: platformHashtags.map((h: string) => h.replace('#', '')).slice(0, 10),
           };
         }
@@ -412,25 +528,21 @@ export async function POST(req: NextRequest) {
         }
 
         if (platform === 'pinterest') {
-          // destinationLink فقط — بدون title (حقل غير معروف)
           scheduledPost.pinterestData = {
             destinationLink: productUrl || '',
           };
-          // Pinterest يحتاج title في النص الرئيسي
           scheduledPost.text = `${perfumeName} — ${perfumeBrand}\n\n${formattedText}`;
         }
 
         if (platform === 'google_business') {
-          scheduledPost.gmbData = {
-            topicType: 'STANDARD',
-          };
+          scheduledPost.gmbData = { topicType: 'STANDARD' };
         }
 
         // 6. إرسال إلى Metricool V2 API
         const url = `${METRICOOL_V2_BASE}/scheduler/posts?blogId=${blogId}${finalUserId ? `&userId=${finalUserId}` : ''}`;
 
-        console.log(`[Smart Publish V4] ${platform} → POST ${url}`);
-        console.log(`[Smart Publish V4] ${platform} payload:`, JSON.stringify(scheduledPost).substring(0, 800));
+        console.log(`[Smart Publish V5] ${platform} → POST ${url}`);
+        console.log(`[Smart Publish V5] ${platform} payload:`, JSON.stringify(scheduledPost).substring(0, 800));
 
         const response = await fetch(url, {
           method: 'POST',
@@ -442,7 +554,7 @@ export async function POST(req: NextRequest) {
         });
 
         const responseText = await response.text();
-        console.log(`[Smart Publish V4] ${platform} response: ${response.status} ${responseText.substring(0, 500)}`);
+        console.log(`[Smart Publish V5] ${platform} response: ${response.status} ${responseText.substring(0, 500)}`);
 
         if (response.ok) {
           let result;
@@ -488,7 +600,7 @@ export async function POST(req: NextRequest) {
       totalFailed: failCount,
     });
   } catch (error) {
-    console.error('[Smart Publish V4] Server error:', error);
+    console.error('[Smart Publish V5] Server error:', error);
     return NextResponse.json({
       error: 'خطأ في الخادم',
       details: error instanceof Error ? error.message : 'Unknown',
