@@ -1,7 +1,8 @@
 // ============================================================
-// lib/selfLearningEngine.ts — Self-Learning AI Engine
+// lib/selfLearningEngine.ts — Self-Learning AI Engine v2.0
 // يتعلم من نتائج المنشورات السابقة ويحسّن المحتوى القادم
 // يحافظ على شخصية مهووس + يطوّر الأسلوب بناءً على البيانات
+// يحلل المنافسين ويستخرج أفضل الممارسات
 // ============================================================
 
 // ── Types ───────────────────────────────────────────────────────────────────
@@ -42,8 +43,7 @@ export interface PostPerformance {
 }
 
 export interface LearningProfile {
-  // Best performing content features
-  optimalCaptionLength: Record<string, number>; // per platform
+  optimalCaptionLength: Record<string, number>;
   optimalHashtagCount: Record<string, number>;
   bestPerformingHashtags: string[];
   bestPerformingCTAs: string[];
@@ -65,10 +65,32 @@ export interface LearningProfile {
     avgAttentionSpan: 'short' | 'medium' | 'long';
   };
 
+  // Competitor insights
+  competitorInsights: {
+    topCompetitorHashtags: string[];
+    competitorPostingTimes: Record<string, number>;
+    competitorContentStyles: string[];
+    lastAnalyzed: string;
+  };
+
+  // Platform-specific content templates
+  platformTemplates: Record<string, PlatformTemplate>;
+
   // Learning metadata
   totalPostsAnalyzed: number;
   lastUpdated: string;
-  confidenceLevel: number; // 0-100, increases with more data
+  confidenceLevel: number;
+  learningVersion: number;
+}
+
+export interface PlatformTemplate {
+  platform: string;
+  captionStructure: string;
+  hashtagStrategy: string;
+  bestMediaType: string;
+  toneAdjustment: string;
+  audienceProfile: string;
+  postFrequency: string;
 }
 
 export interface ContentOptimization {
@@ -76,12 +98,12 @@ export interface ContentOptimization {
   optimizedCaption: string;
   changes: string[];
   changesAr: string[];
-  expectedImprovement: number; // percentage
+  expectedImprovement: number;
   confidence: number;
 }
 
 export interface SmartSuggestion {
-  type: 'timing' | 'content' | 'hashtag' | 'format' | 'frequency';
+  type: 'timing' | 'content' | 'hashtag' | 'format' | 'frequency' | 'competitor' | 'trend';
   typeAr: string;
   suggestion: string;
   suggestionAr: string;
@@ -110,14 +132,14 @@ const MAHWOUS_BRAND_VOICE = {
     'تجربة لا تُنسى',
     'أناقة بلا حدود',
     'عطرك هويتك',
+    'روائح تأسر الحواس',
+    'ذوق رفيع',
+    'تميّز بعطرك',
   ],
   avoidPhrases: [
-    'رخيص',
-    'تقليد',
-    'عادي',
-    'بسيط',
+    'رخيص', 'تقليد', 'عادي', 'بسيط', 'مقلد', 'درجة أولى', 'كوبي',
   ],
-  emojiStyle: ['✨', '🌹', '👑', '💎', '🔥', '⭐', '🌙'],
+  emojiStyle: ['✨', '🌹', '👑', '💎', '🔥', '⭐', '🌙', '🏆', '💫'],
   ctaTemplates: [
     'اطلبه الآن من الرابط في البايو 🔗',
     'جرّبه وشاركنا رأيك 💬',
@@ -125,7 +147,86 @@ const MAHWOUS_BRAND_VOICE = {
     'تاق صديقك اللي يحب العطور 👇',
     'اكتشف المزيد في مهووس ستور ✨',
     'وش عطرك المفضل؟ شاركنا 💭',
+    'اضغط الرابط في البايو واطلب الحين 🛒',
+    'شاركنا تجربتك مع هالعطر 📝',
   ],
+};
+
+// ── Platform-Specific Content Strategy ────────────────────────────────────
+
+const DEFAULT_PLATFORM_TEMPLATES: Record<string, PlatformTemplate> = {
+  instagram: {
+    platform: 'instagram',
+    captionStructure: 'خطاف جذاب → وصف العطر → قصة/تجربة → CTA → هاشتاقات',
+    hashtagStrategy: '10-15 هاشتاق: 5 عامة + 5 متخصصة + 3-5 ترند',
+    bestMediaType: 'ريلز 9:16 + كاروسيل + ستوري',
+    toneAdjustment: 'ودي وفاخر مع لمسة شبابية — استخدم إيموجي بذوق',
+    audienceProfile: 'شباب 18-35 سعوديين مهتمين بالأناقة والفخامة',
+    postFrequency: 'يومياً: 1 ريلز + 1 بوست + 2-3 ستوري',
+  },
+  facebook: {
+    platform: 'facebook',
+    captionStructure: 'عنوان قوي → وصف مفصل → فوائد العطر → CTA',
+    hashtagStrategy: '3-5 هاشتاقات فقط — لا تكثر',
+    bestMediaType: 'صور عالية الجودة + فيديو قصير',
+    toneAdjustment: 'رسمي أكثر مع حفاظ على الود — محتوى معلوماتي',
+    audienceProfile: 'رجال ونساء 25-45 يبحثون عن عطور أصلية',
+    postFrequency: 'يومياً: 1 بوست + 1 ستوري',
+  },
+  twitter: {
+    platform: 'twitter',
+    captionStructure: 'رأي جريء أو حقيقة مثيرة → وصف مختصر → رابط',
+    hashtagStrategy: '2-3 هاشتاقات فقط — تويتر يكره الكثرة',
+    bestMediaType: 'صورة واحدة قوية + نص مختصر',
+    toneAdjustment: 'مباشر وجريء — آراء قوية عن العطور — ثريدات تعليمية',
+    audienceProfile: 'محبي العطور والنقاشات — يحبون المحتوى التعليمي',
+    postFrequency: '2-3 تغريدات يومياً + ثريد أسبوعي',
+  },
+  tiktok: {
+    platform: 'tiktok',
+    captionStructure: 'خطاف في أول 3 ثواني → محتوى ممتع → CTA',
+    hashtagStrategy: '5-8 هاشتاقات: ترند + متخصصة + FYP',
+    bestMediaType: 'فيديو عمودي 9:16 — 15-60 ثانية',
+    toneAdjustment: 'شبابي وحماسي — ترندات — تحديات — مقارنات سريعة',
+    audienceProfile: 'جيل Z وألفية — يحبون المحتوى السريع والممتع',
+    postFrequency: 'يومياً: 1-2 فيديو',
+  },
+  linkedin: {
+    platform: 'linkedin',
+    captionStructure: 'قصة نجاح أو درس → تحليل السوق → رؤية مهنية',
+    hashtagStrategy: '3-5 هاشتاقات مهنية',
+    bestMediaType: 'مقال + صورة احترافية',
+    toneAdjustment: 'مهني وتحليلي — قصص نجاح العلامة التجارية — رؤى السوق',
+    audienceProfile: 'رواد أعمال ومهتمين بصناعة العطور والتجارة',
+    postFrequency: '3-4 منشورات أسبوعياً',
+  },
+  youtube: {
+    platform: 'youtube',
+    captionStructure: 'عنوان SEO → وصف مفصل → تايم ستامبس → روابط',
+    hashtagStrategy: '8-12 هاشتاق في الوصف + Tags',
+    bestMediaType: 'فيديو أفقي 16:9 + Shorts عمودي',
+    toneAdjustment: 'تعليمي ومعلوماتي — مراجعات مفصلة — مقارنات',
+    audienceProfile: 'باحثون عن مراجعات عطور مفصلة وتوصيات',
+    postFrequency: '2-3 فيديوهات أسبوعياً + Shorts يومي',
+  },
+  pinterest: {
+    platform: 'pinterest',
+    captionStructure: 'وصف SEO غني بالكلمات المفتاحية → رابط المنتج',
+    hashtagStrategy: '5-8 هاشتاقات وصفية',
+    bestMediaType: 'صور عمودية عالية الجودة 2:3',
+    toneAdjustment: 'وصفي وجمالي — كلمات مفتاحية SEO — إلهام بصري',
+    audienceProfile: 'نساء مهتمات بالجمال والأناقة يبحثن عن إلهام',
+    postFrequency: '5-10 بنات يومياً',
+  },
+  google_business: {
+    platform: 'google_business',
+    captionStructure: 'عرض أو منتج جديد → وصف → CTA → معلومات التواصل',
+    hashtagStrategy: 'بدون هاشتاقات — كلمات مفتاحية محلية',
+    bestMediaType: 'صور المنتجات + عروض',
+    toneAdjustment: 'مهني ومحلي — تركيز على العروض والمنتجات الجديدة',
+    audienceProfile: 'عملاء محليون يبحثون عن متاجر عطور قريبة',
+    postFrequency: '3-4 منشورات أسبوعياً',
+  },
 };
 
 // ── Performance Tracking ────────────────────────────────────────────────────
@@ -141,14 +242,12 @@ export function getPerformanceHistory(): PostPerformance[] {
 
 export function savePerformanceHistory(history: PostPerformance[]): void {
   if (typeof window === 'undefined') return;
-  // Keep last 500 posts
   const trimmed = history.slice(-500);
   localStorage.setItem(PERFORMANCE_HISTORY_KEY, JSON.stringify(trimmed));
 }
 
 export function addPostPerformance(post: PostPerformance): void {
   const history = getPerformanceHistory();
-  // Check if already exists
   const existingIdx = history.findIndex(p => p.postId === post.postId);
   if (existingIdx >= 0) {
     history[existingIdx] = post;
@@ -169,8 +268,8 @@ export function extractContentFeatures(caption: string): {
   mentionCount: number;
 } {
   const emojiRegex = /[\uD83C-\uDBFF\uDC00-\uDFFF\u2600-\u26FF\u2700-\u27BF]/;
-  const questionRegex = /[?؟]/;
-  const ctaRegex = /(اطلب|اكتشف|جرّب|شارك|تاق|احفظ|اضغط|زور|تسوق|اشتر)/i;
+  const questionRegex = /[?\u061F]/;
+  const ctaRegex = /(\u0627\u0637\u0644\u0628|\u0627\u0643\u062A\u0634\u0641|\u062C\u0631\u0651\u0628|\u0634\u0627\u0631\u0643|\u062A\u0627\u0642|\u0627\u062D\u0641\u0638|\u0627\u0636\u063A\u0637|\u0632\u0648\u0631|\u062A\u0633\u0648\u0642|\u0627\u0634\u062A\u0631)/i;
   const hashtagRegex = /#[\w\u0600-\u06FF]+/g;
   const mentionRegex = /@[\w]+/g;
 
@@ -214,7 +313,15 @@ export function getLearningProfile(): LearningProfile {
   if (typeof window === 'undefined') return getDefaultProfile();
   try {
     const stored = localStorage.getItem(LEARNING_PROFILE_KEY);
-    return stored ? JSON.parse(stored) : getDefaultProfile();
+    if (stored) {
+      const parsed = JSON.parse(stored);
+      // Ensure new fields exist (migration)
+      if (!parsed.competitorInsights) parsed.competitorInsights = getDefaultProfile().competitorInsights;
+      if (!parsed.platformTemplates) parsed.platformTemplates = DEFAULT_PLATFORM_TEMPLATES;
+      if (!parsed.learningVersion) parsed.learningVersion = 1;
+      return parsed;
+    }
+    return getDefaultProfile();
   } catch {
     return getDefaultProfile();
   }
@@ -230,6 +337,7 @@ function getDefaultProfile(): LearningProfile {
       tiktok: 100,
       youtube: 200,
       pinterest: 100,
+      google_business: 150,
     },
     optimalHashtagCount: {
       instagram: 15,
@@ -239,6 +347,7 @@ function getDefaultProfile(): LearningProfile {
       tiktok: 5,
       youtube: 10,
       pinterest: 5,
+      google_business: 0,
     },
     bestPerformingHashtags: [
       '#عطور', '#مهووس_ستور', '#عطور_أصلية', '#perfume',
@@ -247,22 +356,24 @@ function getDefaultProfile(): LearningProfile {
     ],
     bestPerformingCTAs: MAHWOUS_BRAND_VOICE.ctaTemplates,
     bestPostingHours: {
-      instagram: 21,
-      facebook: 19,
-      twitter: 12,
-      linkedin: 8,
-      tiktok: 22,
-      youtube: 17,
-      pinterest: 21,
+      instagram: 21,  // 9 PM — ذروة التفاعل السعودي
+      facebook: 19,   // 7 PM
+      twitter: 12,    // 12 PM — وقت الغداء
+      linkedin: 8,    // 8 AM — بداية العمل
+      tiktok: 22,     // 10 PM — ذروة تيك توك
+      youtube: 17,    // 5 PM
+      pinterest: 21,  // 9 PM
+      google_business: 10, // 10 AM
     },
     bestPostingDays: {
-      instagram: 4, // Thursday
-      facebook: 3,  // Wednesday
-      twitter: 2,   // Tuesday
-      linkedin: 1,  // Monday
-      tiktok: 5,    // Friday
-      youtube: 6,   // Saturday
-      pinterest: 0,  // Sunday
+      instagram: 4,   // Thursday
+      facebook: 3,    // Wednesday
+      twitter: 2,     // Tuesday
+      linkedin: 1,    // Monday
+      tiktok: 5,      // Friday
+      youtube: 6,     // Saturday
+      pinterest: 0,   // Sunday
+      google_business: 0, // Sunday
     },
     bestContentTypes: {
       instagram: 'reels',
@@ -272,6 +383,7 @@ function getDefaultProfile(): LearningProfile {
       tiktok: 'video',
       youtube: 'short',
       pinterest: 'pin',
+      google_business: 'post',
     },
     topPerformingPhrases: MAHWOUS_BRAND_VOICE.keyPhrases,
     avoidPhrases: MAHWOUS_BRAND_VOICE.avoidPhrases,
@@ -283,9 +395,17 @@ function getDefaultProfile(): LearningProfile {
       prefersCTA: true,
       avgAttentionSpan: 'medium',
     },
+    competitorInsights: {
+      topCompetitorHashtags: [],
+      competitorPostingTimes: {},
+      competitorContentStyles: [],
+      lastAnalyzed: '',
+    },
+    platformTemplates: DEFAULT_PLATFORM_TEMPLATES,
     totalPostsAnalyzed: 0,
     lastUpdated: new Date().toISOString(),
-    confidenceLevel: 10, // Low confidence until more data
+    confidenceLevel: 10,
+    learningVersion: 2,
   };
 }
 
@@ -300,15 +420,14 @@ export function updateLearningFromPerformance(): LearningProfile {
   const history = getPerformanceHistory();
   const profile = getLearningProfile();
 
-  if (history.length < 5) {
-    // Not enough data to learn from
+  if (history.length < 3) {
     return profile;
   }
 
   // Sort by performance score
   const sorted = [...history].sort((a, b) => b.performanceScore - a.performanceScore);
-  const topPosts = sorted.slice(0, Math.ceil(sorted.length * 0.3)); // Top 30%
-  const bottomPosts = sorted.slice(-Math.ceil(sorted.length * 0.3)); // Bottom 30%
+  const topPosts = sorted.slice(0, Math.ceil(sorted.length * 0.3));
+  const bottomPosts = sorted.slice(-Math.ceil(sorted.length * 0.3));
 
   // Learn optimal caption length per platform
   const platformGroups = new Map<string, PostPerformance[]>();
@@ -319,7 +438,7 @@ export function updateLearningFromPerformance(): LearningProfile {
   }
 
   for (const [platform, posts] of platformGroups) {
-    if (posts.length >= 3) {
+    if (posts.length >= 2) {
       const avgLength = posts.reduce((sum, p) => sum + p.captionLength, 0) / posts.length;
       profile.optimalCaptionLength[platform] = Math.round(avgLength);
     }
@@ -327,7 +446,7 @@ export function updateLearningFromPerformance(): LearningProfile {
 
   // Learn optimal hashtag count
   for (const [platform, posts] of platformGroups) {
-    if (posts.length >= 3) {
+    if (posts.length >= 2) {
       const avgHashtags = posts.reduce((sum, p) => sum + p.hashtagCount, 0) / posts.length;
       profile.optimalHashtagCount[platform] = Math.round(avgHashtags);
     }
@@ -347,8 +466,16 @@ export function updateLearningFromPerformance(): LearningProfile {
   profile.bestPerformingHashtags = Array.from(hashtagPerformance.entries())
     .filter(([, data]) => data.count >= 2)
     .sort((a, b) => (b[1].totalScore / b[1].count) - (a[1].totalScore / a[1].count))
-    .slice(0, 20)
+    .slice(0, 25)
     .map(([tag]) => tag);
+
+  // Ensure core hashtags are always included
+  const coreHashtags = ['#عطور', '#مهووس_ستور', '#عطور_أصلية', '#perfume'];
+  for (const tag of coreHashtags) {
+    if (!profile.bestPerformingHashtags.includes(tag)) {
+      profile.bestPerformingHashtags.push(tag);
+    }
+  }
 
   // Learn best posting hours
   const hourPerformance = new Map<string, Map<number, { totalScore: number; count: number }>>();
@@ -371,6 +498,27 @@ export function updateLearningFromPerformance(): LearningProfile {
     }
   }
 
+  // Learn best posting days
+  const dayPerformance = new Map<string, Map<number, { totalScore: number; count: number }>>();
+  for (const post of history) {
+    if (!dayPerformance.has(post.platform)) {
+      dayPerformance.set(post.platform, new Map());
+    }
+    const platformDays = dayPerformance.get(post.platform)!;
+    const existing = platformDays.get(post.publishDay) || { totalScore: 0, count: 0 };
+    existing.totalScore += post.performanceScore;
+    existing.count += 1;
+    platformDays.set(post.publishDay, existing);
+  }
+
+  for (const [platform, days] of dayPerformance) {
+    const bestDay = Array.from(days.entries())
+      .sort((a, b) => (b[1].totalScore / b[1].count) - (a[1].totalScore / a[1].count))[0];
+    if (bestDay) {
+      profile.bestPostingDays[platform] = bestDay[0];
+    }
+  }
+
   // Learn audience preferences
   const topHasQuestion = topPosts.filter(p => p.hasQuestion).length / topPosts.length;
   const topHasEmoji = topPosts.filter(p => p.hasEmoji).length / topPosts.length;
@@ -378,27 +526,49 @@ export function updateLearningFromPerformance(): LearningProfile {
   const topHasVideo = topPosts.filter(p => p.hasVideo).length / topPosts.length;
 
   profile.audiencePreferences = {
-    prefersVideo: topHasVideo > 0.5,
-    prefersQuestions: topHasQuestion > 0.4,
-    prefersEmoji: topHasEmoji > 0.5,
-    prefersCTA: topHasCTA > 0.4,
+    prefersVideo: topHasVideo > 0.4,
+    prefersQuestions: topHasQuestion > 0.3,
+    prefersEmoji: topHasEmoji > 0.4,
+    prefersCTA: topHasCTA > 0.3,
     avgAttentionSpan: profile.optimalCaptionLength.instagram > 200 ? 'long' :
       profile.optimalCaptionLength.instagram > 100 ? 'medium' : 'short',
   };
 
-  // Learn phrases to avoid (from bottom posts)
-  const bottomPhrases = new Set<string>();
-  for (const post of bottomPosts) {
-    const words = post.caption.split(/\s+/).filter(w => w.length > 3);
-    for (const word of words) {
-      bottomPhrases.add(word);
+  // Learn top performing phrases from top posts
+  const phraseScores = new Map<string, number>();
+  for (const post of topPosts) {
+    for (const phrase of MAHWOUS_BRAND_VOICE.keyPhrases) {
+      if (post.caption.includes(phrase)) {
+        phraseScores.set(phrase, (phraseScores.get(phrase) || 0) + post.performanceScore);
+      }
     }
   }
+  profile.topPerformingPhrases = Array.from(phraseScores.entries())
+    .sort((a, b) => b[1] - a[1])
+    .map(([phrase]) => phrase);
+  // Ensure we always have phrases
+  if (profile.topPerformingPhrases.length < 3) {
+    profile.topPerformingPhrases = MAHWOUS_BRAND_VOICE.keyPhrases;
+  }
+
+  // Learn phrases to avoid from bottom posts
+  const bottomOnlyPhrases = new Set<string>();
+  for (const post of bottomPosts) {
+    const words = post.caption.split(/\s+/).filter(w => w.length > 4);
+    for (const word of words) {
+      // Only add if not in top posts
+      const inTop = topPosts.some(tp => tp.caption.includes(word));
+      if (!inTop) bottomOnlyPhrases.add(word);
+    }
+  }
+  // Merge with existing avoid phrases
+  profile.avoidPhrases = [...new Set([...MAHWOUS_BRAND_VOICE.avoidPhrases, ...Array.from(bottomOnlyPhrases).slice(0, 10)])];
 
   // Update metadata
   profile.totalPostsAnalyzed = history.length;
   profile.lastUpdated = new Date().toISOString();
-  profile.confidenceLevel = Math.min(100, Math.round((history.length / 100) * 100));
+  profile.confidenceLevel = Math.min(100, Math.round((history.length / 50) * 100));
+  profile.learningVersion = 2;
 
   saveLearningProfile(profile);
   return profile;
@@ -412,6 +582,7 @@ export function optimizeCaption(
   perfumeName?: string
 ): ContentOptimization {
   const profile = getLearningProfile();
+  const template = profile.platformTemplates[platform] || DEFAULT_PLATFORM_TEMPLATES[platform];
   const changes: string[] = [];
   const changesAr: string[] = [];
   let optimized = caption;
@@ -419,7 +590,6 @@ export function optimizeCaption(
   // 1. Check caption length
   const optimalLength = profile.optimalCaptionLength[platform] || 150;
   if (caption.length > optimalLength * 1.5) {
-    // Too long — suggest trimming
     changes.push(`Caption too long (${caption.length} chars). Optimal: ~${optimalLength}`);
     changesAr.push(`الكابشن طويل جداً (${caption.length} حرف). الأمثل: ~${optimalLength}`);
   }
@@ -428,9 +598,10 @@ export function optimizeCaption(
   const currentHashtags = (caption.match(/#[\w\u0600-\u06FF]+/g) || []).length;
   const optimalHashtags = profile.optimalHashtagCount[platform] || 5;
   if (currentHashtags < optimalHashtags * 0.5) {
-    // Add recommended hashtags
     const missingCount = optimalHashtags - currentHashtags;
-    const recommendedTags = profile.bestPerformingHashtags
+    const platformTrending = getTrendingHashtags(platform);
+    const recommendedTags = [...profile.bestPerformingHashtags, ...platformTrending]
+      .filter((tag, idx, arr) => arr.indexOf(tag) === idx) // unique
       .filter(tag => !caption.includes(tag))
       .slice(0, missingCount);
 
@@ -452,14 +623,17 @@ export function optimizeCaption(
     changesAr.push('تمت إضافة دعوة للتفاعل');
   }
 
-  // 4. Check for question
+  // 4. Check for question (platform-specific)
   if (!features.hasQuestion && profile.audiencePreferences.prefersQuestions) {
-    const questions = [
-      'وش رأيكم؟ 💭',
-      'جربتوه قبل؟ شاركونا 👇',
-      'مين يحب هالنوع من العطور؟ ✨',
-    ];
-    const randomQ = questions[Math.floor(Math.random() * questions.length)];
+    const questions: Record<string, string[]> = {
+      instagram: ['وش رأيكم؟ 💭', 'جربتوه قبل؟ شاركونا 👇', 'مين يحب هالنوع من العطور؟ ✨'],
+      twitter: ['وش أفضل عطر جربته هالسنة؟', 'تفضلون العطور الثقيلة ولا الخفيفة؟', 'مين معي؟ 🤔'],
+      tiktok: ['وش تقولون؟ 🤔', 'جربتوه؟ 👇', 'مين يبي يجرب؟ 🔥'],
+      facebook: ['شاركونا رأيكم في التعليقات 💬', 'وش عطركم المفضل لهالموسم؟'],
+      linkedin: ['ما رأيكم في هذا التوجه في صناعة العطور؟', 'شاركونا تجربتكم المهنية 💼'],
+    };
+    const platformQuestions = questions[platform] || questions.instagram;
+    const randomQ = platformQuestions[Math.floor(Math.random() * platformQuestions.length)];
     optimized = randomQ + '\n\n' + optimized;
     changes.push('Added engagement question');
     changesAr.push('تمت إضافة سؤال لزيادة التفاعل');
@@ -480,16 +654,24 @@ export function optimizeCaption(
     caption.includes(phrase)
   );
   if (!hasBrandPhrase && perfumeName) {
-    const randomPhrase = MAHWOUS_BRAND_VOICE.keyPhrases[
-      Math.floor(Math.random() * MAHWOUS_BRAND_VOICE.keyPhrases.length)
-    ];
+    const randomPhrase = profile.topPerformingPhrases[
+      Math.floor(Math.random() * profile.topPerformingPhrases.length)
+    ] || MAHWOUS_BRAND_VOICE.keyPhrases[0];
     optimized += '\n\n' + randomPhrase;
     changes.push('Added brand voice phrase');
     changesAr.push('تمت إضافة عبارة من هوية مهووس');
   }
 
+  // 7. Check for avoid phrases
+  for (const phrase of profile.avoidPhrases) {
+    if (optimized.includes(phrase)) {
+      changes.push(`Warning: Contains avoid phrase "${phrase}"`);
+      changesAr.push(`تحذير: يحتوي على عبارة يجب تجنبها "${phrase}"`);
+    }
+  }
+
   // Calculate expected improvement
-  const expectedImprovement = changes.length * 8; // ~8% per optimization
+  const expectedImprovement = changes.length * 7;
 
   return {
     originalCaption: caption,
@@ -508,13 +690,27 @@ export function generateSmartSuggestions(): SmartSuggestion[] {
   const history = getPerformanceHistory();
   const suggestions: SmartSuggestion[] = [];
 
-  // Timing suggestions
+  const dayNames: Record<number, string> = {
+    0: 'الأحد', 1: 'الاثنين', 2: 'الثلاثاء', 3: 'الأربعاء',
+    4: 'الخميس', 5: 'الجمعة', 6: 'السبت',
+  };
+
+  const platformNamesAr: Record<string, string> = {
+    instagram: 'انستقرام', facebook: 'فيسبوك', twitter: 'تويتر',
+    tiktok: 'تيك توك', linkedin: 'لينكد إن', youtube: 'يوتيوب',
+    pinterest: 'بنترست', google_business: 'قوقل بزنس',
+  };
+
+  // Timing suggestions per platform
   for (const [platform, hour] of Object.entries(profile.bestPostingHours)) {
+    const day = profile.bestPostingDays[platform];
+    const dayName = dayNames[day] || '';
+    const platformName = platformNamesAr[platform] || platform;
     suggestions.push({
       type: 'timing',
       typeAr: 'التوقيت',
-      suggestion: `Best time to post on ${platform}: ${hour}:00`,
-      suggestionAr: `أفضل وقت للنشر على ${platform}: ${hour}:00`,
+      suggestion: `Best time for ${platform}: ${dayName} at ${hour}:00`,
+      suggestionAr: `أفضل وقت للنشر على ${platformName}: يوم ${dayName} الساعة ${hour}:00`,
       impact: 'high',
       basedOn: `${history.filter(p => p.platform === platform).length} posts analyzed`,
       dataPoints: history.filter(p => p.platform === platform).length,
@@ -527,7 +723,7 @@ export function generateSmartSuggestions(): SmartSuggestion[] {
       type: 'format',
       typeAr: 'الصيغة',
       suggestion: 'Your audience engages 3x more with video content',
-      suggestionAr: 'جمهورك يتفاعل 3 أضعاف مع محتوى الفيديو',
+      suggestionAr: 'جمهورك يتفاعل 3 أضعاف مع محتوى الفيديو — ركّز على الريلز والشورتس',
       impact: 'high',
       basedOn: 'Video vs image performance comparison',
       dataPoints: history.length,
@@ -540,7 +736,7 @@ export function generateSmartSuggestions(): SmartSuggestion[] {
       type: 'hashtag',
       typeAr: 'الهاشتاقات',
       suggestion: `Top hashtags: ${profile.bestPerformingHashtags.slice(0, 5).join(', ')}`,
-      suggestionAr: `أفضل الهاشتاقات: ${profile.bestPerformingHashtags.slice(0, 5).join(', ')}`,
+      suggestionAr: `أفضل الهاشتاقات أداءً: ${profile.bestPerformingHashtags.slice(0, 5).join(', ')}`,
       impact: 'medium',
       basedOn: 'Hashtag performance analysis',
       dataPoints: history.length,
@@ -559,7 +755,7 @@ export function generateSmartSuggestions(): SmartSuggestion[] {
       type: 'frequency',
       typeAr: 'معدل النشر',
       suggestion: `Current: ${postsPerWeek.toFixed(1)} posts/week. Target: 7+ for optimal growth`,
-      suggestionAr: `الحالي: ${postsPerWeek.toFixed(1)} منشور/أسبوع. المستهدف: 7+ للنمو الأمثل`,
+      suggestionAr: `الحالي: ${postsPerWeek.toFixed(1)} منشور/أسبوع. المستهدف: 7+ يومياً للنمو الأمثل`,
       impact: 'high',
       basedOn: 'Industry benchmarks for perfume brands',
       dataPoints: history.length,
@@ -579,6 +775,30 @@ export function generateSmartSuggestions(): SmartSuggestion[] {
     });
   }
 
+  // Trend suggestions
+  suggestions.push({
+    type: 'trend',
+    typeAr: 'الترندات',
+    suggestion: 'Use trending audio and formats on TikTok and Reels',
+    suggestionAr: 'استخدم الأصوات والصيغ الرائجة على تيك توك وريلز لزيادة الوصول 5 أضعاف',
+    impact: 'high',
+    basedOn: 'Platform algorithm preferences',
+    dataPoints: 0,
+  });
+
+  // Competitor insight suggestions
+  if (profile.competitorInsights.topCompetitorHashtags.length > 0) {
+    suggestions.push({
+      type: 'competitor',
+      typeAr: 'المنافسون',
+      suggestion: `Competitor trending hashtags: ${profile.competitorInsights.topCompetitorHashtags.slice(0, 5).join(', ')}`,
+      suggestionAr: `هاشتاقات رائجة عند المنافسين: ${profile.competitorInsights.topCompetitorHashtags.slice(0, 5).join(', ')}`,
+      impact: 'medium',
+      basedOn: 'Competitor analysis via Metricool',
+      dataPoints: profile.competitorInsights.topCompetitorHashtags.length,
+    });
+  }
+
   return suggestions;
 }
 
@@ -595,13 +815,16 @@ export function getImprovedPromptContext(): string {
     .map(p => p.caption);
 
   let context = `
-## شخصية مهووس — دليل صوت العلامة التجارية المُحسَّن بالذكاء الاصطناعي
+## شخصية مهووس — دليل صوت العلامة التجارية المُحسَّن بالذكاء الاصطناعي (v2.0)
 
 ### الشخصية:
 ${MAHWOUS_BRAND_VOICE.personality}
 
 ### النبرة:
 ${MAHWOUS_BRAND_VOICE.tone}
+
+### اللغة:
+${MAHWOUS_BRAND_VOICE.language}
 
 ### العبارات المفتاحية (الأعلى أداءً):
 ${profile.topPerformingPhrases.join(' | ')}
@@ -610,10 +833,10 @@ ${profile.topPerformingPhrases.join(' | ')}
 ${profile.avoidPhrases.join(' | ')}
 
 ### تفضيلات الجمهور المُكتشفة:
-- يفضل الفيديو: ${profile.audiencePreferences.prefersVideo ? 'نعم' : 'لا'}
-- يفضل الأسئلة: ${profile.audiencePreferences.prefersQuestions ? 'نعم' : 'لا'}
-- يفضل الإيموجي: ${profile.audiencePreferences.prefersEmoji ? 'نعم' : 'لا'}
-- يفضل دعوة التفاعل: ${profile.audiencePreferences.prefersCTA ? 'نعم' : 'لا'}
+- يفضل الفيديو: ${profile.audiencePreferences.prefersVideo ? 'نعم ✅' : 'لا ❌'}
+- يفضل الأسئلة: ${profile.audiencePreferences.prefersQuestions ? 'نعم ✅' : 'لا ❌'}
+- يفضل الإيموجي: ${profile.audiencePreferences.prefersEmoji ? 'نعم ✅' : 'لا ❌'}
+- يفضل دعوة التفاعل: ${profile.audiencePreferences.prefersCTA ? 'نعم ✅' : 'لا ❌'}
 - مدى الانتباه: ${profile.audiencePreferences.avgAttentionSpan}
 
 ### مستوى الثقة في البيانات: ${profile.confidenceLevel}%
@@ -623,11 +846,33 @@ ${profile.avoidPhrases.join(' | ')}
   if (topCaptions.length > 0) {
     context += `\n### أمثلة من أفضل المنشورات أداءً:\n`;
     topCaptions.forEach((caption, i) => {
-      context += `${i + 1}. "${caption.substring(0, 200)}..."\n`;
+      context += `${i + 1}. "${caption.substring(0, 200)}"\n`;
     });
   }
 
   return context;
+}
+
+// ── Get Platform-Specific Prompt ────────────────────────────────────────────
+
+export function getPlatformPrompt(platform: string): string {
+  const profile = getLearningProfile();
+  const template = profile.platformTemplates[platform] || DEFAULT_PLATFORM_TEMPLATES[platform];
+
+  if (!template) return '';
+
+  return `
+### إرشادات خاصة بمنصة ${platform}:
+- بنية الكابشن: ${template.captionStructure}
+- استراتيجية الهاشتاقات: ${template.hashtagStrategy}
+- نوع الوسائط الأفضل: ${template.bestMediaType}
+- تعديل النبرة: ${template.toneAdjustment}
+- الجمهور المستهدف: ${template.audienceProfile}
+- معدل النشر المطلوب: ${template.postFrequency}
+- أفضل وقت للنشر: ${profile.bestPostingHours[platform] || 'غير محدد'}:00
+- طول الكابشن الأمثل: ${profile.optimalCaptionLength[platform] || 150} حرف
+- عدد الهاشتاقات الأمثل: ${profile.optimalHashtagCount[platform] || 5}
+`;
 }
 
 // ── Optimization Log ────────────────────────────────────────────────────────
@@ -640,7 +885,6 @@ export function logOptimization(optimization: ContentOptimization): void {
       ...optimization,
       timestamp: new Date().toISOString(),
     });
-    // Keep last 100 optimizations
     const trimmed = log.slice(-100);
     localStorage.setItem(OPTIMIZATION_LOG_KEY, JSON.stringify(trimmed));
   } catch {
@@ -670,21 +914,81 @@ export function getTrendingHashtags(platform: string): string[] {
       '#عطور_رجالية', '#عطور_نسائية', '#عطر_اليوم', '#perfumeoftheday',
       '#عطور_فاخرة', '#عطور_عربية', '#oud', '#بخور', '#عود',
       '#perfumelover', '#fragrancecollection', '#scentoftheday',
-      '#عطور_ماركات', '#عطور_مميزة', '#مسك',
+      '#عطور_ماركات', '#عطور_مميزة', '#مسك', '#reels', '#explore',
     ],
     tiktok: [
       '#عطورتيكتوك', '#perfumetok', '#fragrancetok', '#عطر_رجالي',
       '#عطر_نسائي', '#fyp', '#foryou', '#viral', '#trending',
+      '#perfumereview', '#عطور_ترند',
     ],
     twitter: [
       '#عطور_السعودية', '#عطر_مميز', '#توصيات_عطور',
-      '#perfume_review', '#عطور_اصلية',
+      '#perfume_review', '#عطور_اصلية', '#عطور_تويتر',
     ],
     youtube: [
       '#مراجعة_عطور', '#perfume_review', '#top_perfumes',
-      '#عطور_2024', '#best_fragrances',
+      '#عطور_2025', '#best_fragrances', '#shorts',
+    ],
+    pinterest: [
+      '#perfumeaesthetic', '#luxuryperfume', '#fragrancelover',
+      '#عطور_جمال', '#perfumecollection',
+    ],
+    facebook: [
+      '#عطور_فيسبوك', '#عروض_عطور', '#عطور_اونلاين',
+    ],
+    linkedin: [
+      '#perfumeindustry', '#luxurybrands', '#retailbusiness',
+      '#saudibusiness', '#ecommerce',
     ],
   };
 
   return [...general, ...(platformSpecific[platform] || [])];
+}
+
+// ── Update Competitor Insights ──────────────────────────────────────────────
+
+export function updateCompetitorInsights(insights: {
+  topHashtags: string[];
+  postingTimes: Record<string, number>;
+  contentStyles: string[];
+}): void {
+  const profile = getLearningProfile();
+  profile.competitorInsights = {
+    topCompetitorHashtags: insights.topHashtags,
+    competitorPostingTimes: insights.postingTimes,
+    competitorContentStyles: insights.contentStyles,
+    lastAnalyzed: new Date().toISOString(),
+  };
+  saveLearningProfile(profile);
+}
+
+// ── Get Content Calendar Suggestion ─────────────────────────────────────────
+
+export function getContentCalendarSuggestion(): Record<string, { platforms: string[]; contentType: string; time: string }> {
+  const profile = getLearningProfile();
+  const dayNames = ['sunday', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday', 'saturday'];
+  const calendar: Record<string, { platforms: string[]; contentType: string; time: string }> = {};
+
+  for (const day of dayNames) {
+    const dayIndex = dayNames.indexOf(day);
+    const platformsForDay = Object.entries(profile.bestPostingDays)
+      .filter(([, bestDay]) => bestDay === dayIndex)
+      .map(([platform]) => platform);
+
+    if (platformsForDay.length === 0) {
+      // Default: post on all platforms every day
+      platformsForDay.push('instagram', 'twitter', 'tiktok');
+    }
+
+    const primaryPlatform = platformsForDay[0];
+    const bestHour = profile.bestPostingHours[primaryPlatform] || 21;
+
+    calendar[day] = {
+      platforms: platformsForDay,
+      contentType: profile.bestContentTypes[primaryPlatform] || 'post',
+      time: `${bestHour}:00`,
+    };
+  }
+
+  return calendar;
 }

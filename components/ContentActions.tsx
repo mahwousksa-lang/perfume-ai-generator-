@@ -235,7 +235,7 @@ export default function ContentActions({
           className="flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-xl border border-[var(--obsidian-border)] hover:border-green-500 hover:bg-green-500/5 transition-all text-xs text-[var(--text-secondary)]"
         >
           <FileSpreadsheet size={14} className="text-green-400" />
-          تصدير CSV لـ Google Sheets / Make.com
+          تصدير CSV للأرشفة
         </button>
       </div>
 
@@ -300,7 +300,7 @@ export default function ContentActions({
           </button>
 
           <p className="text-[9px] text-[var(--text-muted)] text-center">
-            سيتم حفظ المنشور مع وقت النشر. صدّر CSV لـ Make.com لتفعيل النشر التلقائي.
+            سيتم حفظ المنشور مع وقت النشر. استخدم النشر الذكي عبر Metricool للنشر التلقائي.
           </p>
         </div>
       )}

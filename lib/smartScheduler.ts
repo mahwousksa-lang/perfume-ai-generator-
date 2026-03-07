@@ -503,7 +503,7 @@ export function clearSchedule(): void {
   saveSchedule([]);
 }
 
-// ── Export for Make.com ────────────────────────────────────────────────────────
+// ── Export Schedule as CSV ────────────────────────────────────────────────────────────
 
 export function exportScheduleCSV(items: ScheduledItem[]): void {
   const headers = [

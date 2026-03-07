@@ -24,7 +24,7 @@ import VideoDisplay from '@/components/VideoDisplay';
 import SmartSchedulePanel from '@/components/SmartSchedulePanel';
 import PostHistory from '@/components/PostHistory';
 import { addToQueue, getQueue, downloadCSV, ALL_PLATFORMS, type QueuedPost } from '@/lib/contentQueue';
-import { sendToMakeWebhook, getWebhookUrl, setWebhookUrl, isWebhookConfigured } from '@/lib/makeWebhook';
+// Make.com removed — Metricool is the sole publishing engine
 import MetricoolDashboard from '@/components/MetricoolDashboard';
 import SmartPublishButton from '@/components/SmartPublishButton';
 import { optimizeCaption } from '@/lib/selfLearningEngine';
@@ -60,13 +60,11 @@ export default function HomePage() {
   // ── Save state ─────────────────────────────────────────────────────────
   const [saved, setSaved] = useState(false);
 
-  // ── Make.com Webhook state ─────────────────────────────────────────────
-  const [webhookUrl, setWebhookUrlState] = useState('');
-  const [showWebhookSettings, setShowWebhookSettings] = useState(false);
-  const [sendingToMake, setSendingToMake] = useState(false);
+  // ── Metricool state ────────────────────────────────────────────────────
+  const [metricoolConnected, setMetricoolConnected] = useState(false);
 
   useEffect(() => {
-    setWebhookUrlState(getWebhookUrl());
+    setMetricoolConnected(isMetricoolConfigured());
   }, []);
 
   const handleBottleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -473,65 +471,7 @@ export default function HomePage() {
     toast.success(`تم تصدير ${queue.length} منشور إلى CSV`);
   };
 
-  // ── إرسال مباشر إلى Make.com → النشر على المنصات ────────────────────
-  const handleSendToMake = async () => {
-    if (!isWebhookConfigured()) {
-      setShowWebhookSettings(true);
-      toast.error('أضف رابط Make.com Webhook أولاً');
-      return;
-    }
-    if (!perfumeData || !generationResult) {
-      toast.error('لا توجد بيانات للإرسال');
-      return;
-    }
-
-    setSendingToMake(true);
-    try {
-      const storyImg = generationResult.images.find(i => i.format === 'story')?.url || '';
-      const postImg = generationResult.images.find(i => i.format === 'post')?.url || '';
-      const landscapeImg = generationResult.images.find(i => i.format === 'landscape')?.url || '';
-      const verticalVideo = videoInfos.find(v => v.aspectRatio === '9:16' && v.videoUrl)?.videoUrl || '';
-      const horizontalVideo = videoInfos.find(v => v.aspectRatio === '16:9' && v.videoUrl)?.videoUrl || '';
-
-      const post: QueuedPost = {
-        id: `post_${Date.now()}`,
-        timestamp: new Date().toISOString(),
-        perfumeName: perfumeData.name,
-        perfumeBrand: perfumeData.brand,
-        productUrl,
-        storyImageUrl: storyImg,
-        postImageUrl: postImg,
-        landscapeImageUrl: landscapeImg,
-        verticalVideoUrl: verticalVideo,
-        horizontalVideoUrl: horizontalVideo,
-        verticalVoiceover: videoInfos.find(v => v.aspectRatio === '9:16')?.voiceoverText || '',
-        horizontalVoiceover: videoInfos.find(v => v.aspectRatio === '16:9')?.voiceoverText || '',
-        captions: (captionResult?.captions || {}) as Record<string, string>,
-        videoCaptions: (videoCaptions || {}) as Record<string, string>,
-        scheduledTime: null,
-        platforms: ALL_PLATFORMS.map(p => p.id),
-        status: 'scheduled',
-        sheetsExported: false,
-      };
-
-      const result = await sendToMakeWebhook(post);
-      if (result.success) {
-        toast.success('تم الإرسال إلى Make.com بنجاح — جاري النشر على المنصات!');
-      } else {
-        toast.error(result.message);
-      }
-    } catch (err) {
-      toast.error('خطأ في الإرسال: ' + (err instanceof Error ? err.message : 'غير معروف'));
-    } finally {
-      setSendingToMake(false);
-    }
-  };
-
-  const handleSaveWebhookUrl = () => {
-    setWebhookUrl(webhookUrl);
-    setShowWebhookSettings(false);
-    toast.success('تم حفظ رابط Make.com Webhook');
-  };
+  // ── Make.com محذوف — Metricool هو المحرك الوحيد للنشر ────────────────────
 
   const handleReset = () => {
     setStep('input');
@@ -710,7 +650,7 @@ export default function HomePage() {
               </div>
 
               <p className="text-xs text-[var(--text-muted)] mb-4 leading-relaxed">
-                احفظ المنشور أولاً ثم صدّره كملف CSV لرفعه على Google Sheets وأتمتة النشر عبر Make.com
+                احفظ المنشور أولاً ثم انشر ذكياً عبر Metricool أو حمّل الملفات للنشر اليدوي
               </p>
 
               <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
@@ -752,67 +692,28 @@ export default function HomePage() {
                 >
                   <Clock size={24} className="text-blue-400 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-bold text-[var(--text-primary)]">تصدير CSV</span>
-                  <span className="text-[11px] text-[var(--text-muted)] leading-snug">ملف جاهز لـ Google Sheets وأتمتة Make.com</span>
+                  <span className="text-[11px] text-[var(--text-muted)] leading-snug">ملف CSV للأرشفة والتحليل</span>
                 </button>
               </div>
 
-              {/* ══════ زر الإرسال المباشر إلى Make.com ══════ */}
+              {/* ══════ حالة الاتصال بـ Metricool ══════ */}
               <div className="mt-4 pt-4 border-t border-[var(--obsidian-border)]">
-                <div className="flex items-center justify-between mb-3">
+                <div className="flex items-center justify-between">
                   <div className="flex items-center gap-2">
-                    <div className="w-2 h-2 rounded-full" style={{backgroundColor: isWebhookConfigured() ? '#22c55e' : '#ef4444'}} />
+                    <div className="w-2 h-2 rounded-full" style={{backgroundColor: metricoolConnected ? '#22c55e' : '#ef4444'}} />
                     <span className="text-xs text-[var(--text-muted)]">
-                      {isWebhookConfigured() ? 'Make.com متصل' : 'Make.com غير متصل'}
+                      {metricoolConnected ? 'Metricool متصل — النشر الذكي جاهز' : 'Metricool غير متصل'}
                     </span>
                   </div>
-                  <button
-                    onClick={() => setShowWebhookSettings(!showWebhookSettings)}
-                    className="text-xs text-[var(--gold)] hover:underline"
-                  >
-                    {showWebhookSettings ? 'إخفاء الإعدادات' : 'إعدادات الربط'}
-                  </button>
-                </div>
-
-                {showWebhookSettings && (
-                  <div className="mb-4 p-4 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)] space-y-3">
-                    <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-                      رابط Webhook من Make.com — التطبيق يرسل البيانات مباشرة للنشر على المنصات
-                    </p>
-                    <div className="flex gap-2">
-                      <input
-                        type="url"
-                        className="luxury-input text-xs flex-1"
-                        placeholder="https://hook.eu2.make.com/..."
-                        value={webhookUrl}
-                        onChange={(e) => setWebhookUrlState(e.target.value)}
-                        dir="ltr"
-                      />
-                      <button
-                        onClick={handleSaveWebhookUrl}
-                        className="px-4 py-2 rounded-lg bg-[var(--gold)] text-black text-xs font-bold hover:opacity-90 transition-opacity"
-                      >
-                        حفظ
-                      </button>
-                    </div>
-                  </div>
-                )}
-
-                <button
-                  onClick={handleSendToMake}
-                  disabled={sendingToMake}
-                  className="w-full py-3.5 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all"
-                  style={{
-                    background: isWebhookConfigured() ? 'linear-gradient(135deg, #6366f1, #8b5cf6)' : 'var(--obsidian-light)',
-                    color: isWebhookConfigured() ? 'white' : 'var(--text-muted)',
-                    border: isWebhookConfigured() ? 'none' : '1px solid var(--obsidian-border)',
-                  }}
-                >
-                  {sendingToMake ? (
-                    <><Loader2 size={16} className="animate-spin" /> جاري الإرسال...</>
-                  ) : (
-                    <><Upload size={16} /> نشر مباشر على المنصات عبر Make.com</>
+                  {!metricoolConnected && (
+                    <button
+                      onClick={() => setActiveTab('intelligence')}
+                      className="text-xs text-[var(--gold)] hover:underline"
+                    >
+                      اربط Metricool الآن
+                    </button>
                   )}
-                </button>
+                </div>
               </div>
             </div>
 
