@@ -77,13 +77,19 @@ function buildPrompt(perfumeData: PerfumeData, vibe: string, attire: string, pro
 - رابط المنتج: ${productLink}
 - المتجر: مهووس (متجر إلكتروني — الطلب أونلاين فقط)
 
-═══ قواعد SEO مهمة ═══
+═══ قواعد مهمة جداً — التزم بها 100% ═══
+- ممنوع كتابة أي كلمة إنجليزية في نص الكابشن (ما عدا الهاشتاقات)
+- المكونات العطرية تُكتب بالعربي فقط: عود، مسك، عنبر، ورد، ياسمين، صندل، باتشولي، فانيلا، بخور، توت، ليمون، برغموت، زنبق، قرنفل، زعفران، خشب الأرز، خشب الصندل، دهن العود
+- ممنوع كتابة: oud, amber, musk, vanilla, patchouli, sandalwood, bergamot, jasmine — اكتبها عربي فقط
+- لو المكونات المقدمة فيها كلمات إنجليزية، ترجمها للعربي مباشرة
 - استخدم كلمات البحث الأكثر تصدراً في كل منصة
-- الهاشتاقات يجب أن تكون مزيج من الأكثر بحثاً عربي وإنجليزي
+- الهاشتاقات فقط يمكن أن تكون مزيج عربي وإنجليزي
 - أضف كلمات مفتاحية طبيعية في النص (اسم العطر، الماركة، نوع العطر)
 - لا تضع رابط المنتج إذا كان طويلاً — استخدم رابط المتجر العام أو واتساب فقط
 - اذكر "مهووس" مرة واحدة فقط في كل كابشن — لا تكرار
 - لا تقل "زوروا" أو "زيارة" — مهووس متجر إلكتروني فقط (اطلب/اطلبه)
+- اكتب بلهجة سعودية واضحة (مثل: وش رايكم، الحين، خلوني أقولكم)
+- السعر يُكتب بالعربي: مثلاً "595 ريال" وليس "595 SAR"
 
 ═══ المطلوب: كابشن لكل منصة ═══
 
@@ -125,27 +131,49 @@ function buildPrompt(perfumeData: PerfumeData, vibe: string, attire: string, pro
 
 function buildFallbackCaptions(perfumeData: PerfumeData, productUrl: string): PlatformCaptions {
   const brand = perfumeData.brand?.replace(/\s/g, '') || 'mahwous';
-  const notes = perfumeData.notes || 'مكونات فاخرة تأسر الحواس';
+  // ترجمة المكونات الإنجليزية إلى عربي
+  const translateNotes = (raw: string): string => {
+    if (!raw) return 'مكونات فاخرة تأسر الحواس';
+    const map: Record<string, string> = {
+      'oud': 'عود', 'musk': 'مسك', 'amber': 'عنبر', 'vanilla': 'فانيلا',
+      'patchouli': 'باتشولي', 'sandalwood': 'صندل', 'bergamot': 'برغموت',
+      'jasmine': 'ياسمين', 'rose': 'ورد', 'cedar': 'خشب الأرز', 'vetiver': 'فيتيفر',
+      'saffron': 'زعفران', 'cardamom': 'هيل', 'cinnamon': 'قرفة', 'iris': 'زنبق',
+      'lavender': 'لافندر', 'tonka': 'تونكا', 'incense': 'بخور', 'leather': 'جلد',
+      'tobacco': 'تبغ', 'pepper': 'فلفل', 'ginger': 'زنجبيل', 'lemon': 'ليمون',
+      'orange': 'برتقال', 'lime': 'ليم', 'geranium': 'جيرانيوم', 'tuberose': 'مسك الليل',
+      'ylang': 'إيلانغ', 'neroli': 'نيرولي', 'benzoin': 'بنزوين', 'myrrh': 'مر',
+      'frankincense': 'لبان', 'agarwood': 'دهن العود', 'woody': 'خشبي',
+      'floral': 'زهري', 'oriental': 'شرقي', 'fresh': 'منعش', 'citrus': 'حمضي',
+      'spicy': 'حار', 'sweet': 'حلو', 'warm': 'دافئ', 'aquatic': 'مائي',
+    };
+    let result = raw;
+    for (const [en, ar] of Object.entries(map)) {
+      result = result.replace(new RegExp(`\\b${en}\\b`, 'gi'), ar);
+    }
+    return result;
+  };
+  const notes = translateNotes(perfumeData.notes || '');
   const productLink = smartProductLink(productUrl);
   const price = perfumeData.price || '';
   const gender = perfumeData.gender === 'men' ? 'رجالي' : perfumeData.gender === 'women' ? 'نسائي' : '';
 
   return {
-    instagram_post: `${perfumeData.name} من ${perfumeData.brand}\n\nتجربة عطرية استثنائية تجمع بين الفخامة والأصالة. مكوناته المنتقاة بعناية تمنحك حضوراً لا يُنسى وثباتاً يدوم طوال اليوم.\n\nالمكونات: ${notes}\n${price ? `السعر: ${price}\n` : ''}\nاطلبه الحين من مهووس:\n${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #fragrance #luxury #عطور_اصلية #عطور_نيش #nicheperfume #عطر_اليوم #توصيات_عطور #perfumetok #عطور_السعودية #الرياض #fragrancecommunity`,
+    instagram_post: `${perfumeData.name} من ${perfumeData.brand}\n\nتجربة عطرية استثنائية تجمع بين الفخامة والأصالة. مكوناته المنتقاة بعناية تمنحك حضوراً لا يُنسى وثباتاً يدوم طوال اليوم.\n\nالمكونات: ${notes}\n${price ? `السعر: ${price.replace(/SAR/gi, 'ريال')}\n` : ''}\nاطلبه الحين من مهووس:\n${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #fragrance #luxury #عطور_اصلية #عطور_نيش #nicheperfume #عطر_اليوم #توصيات_عطور #perfumetok #عطور_السعودية #الرياض #fragrancecommunity`,
     instagram_story: `${perfumeData.name}\nمن ${perfumeData.brand}\n\nاطلبه الحين\n${WHATSAPP_LINK}`,
-    facebook_post: `${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nوش رايكم فيه؟ جربتوه قبل؟\n\nللطلب: ${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #عطور_اصلية #مهووس`,
+    facebook_post: `${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price.replace(/SAR/gi, 'ريال')}\n` : ''}\nوش رايكم فيه؟ جربتوه قبل؟\n\nللطلب: ${WHATSAPP_LINK}\n${productLink}\n\n#عطور_فاخرة #${brand} #عطور #perfume #عطور_اصلية #مهووس`,
     facebook_story: `${perfumeData.name}\n${perfumeData.brand}\nاطلبه الحين\n${WHATSAPP_LINK}`,
     twitter: `${perfumeData.name} من ${perfumeData.brand}\n\nريحة فخمة وثبات خرافي\n\n${WHATSAPP_LINK}\n\n#عطور #${brand} #perfume #عطور_فاخرة`,
     linkedin: `Introducing ${perfumeData.name} by ${perfumeData.brand}\n\nA masterpiece of perfumery that embodies luxury and sophistication.\n\nDiscover more: ${productLink}\n\n#Luxury #Perfume #${brand} #Fragrance #NichePerfume`,
     snapchat: `${perfumeData.name} وصل!\nريحة فخمة من ${perfumeData.brand}\nاطلبه الحين\n${WHATSAPP_LINK}`,
     tiktok: `هالريحة غيرت كل شي!\n${perfumeData.name} من ${perfumeData.brand}\n\nاطلبه من مهووس: ${WHATSAPP_LINK}\n\n#عطور #perfumetok #${brand} #fyp #foryou #عطور_فاخرة #viral #scentoftheday #trending`,
     pinterest: `${perfumeData.name} by ${perfumeData.brand} — Luxury ${gender} Perfume\n\n${notes}\n\nShop: ${productLink}\n\n#LuxuryPerfume #${brand} #Fragrance #عطور_فاخرة #NichePerfume #perfumecollection`,
-    telegram: `${perfumeData.name}\n${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nاطلب: ${productLink}\nواتساب: ${WHATSAPP_LINK}`,
-    haraj: `للبيع: ${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\n- أصلي 100%\n- توصيل لجميع مناطق المملكة\n- الدفع عند الاستلام\n\nللتواصل واتساب: ${WHATSAPP_NUMBER}\n${WHATSAPP_LINK}`,
+    telegram: `${perfumeData.name}\n${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price.replace(/SAR/gi, 'ريال')}\n` : ''}\nاطلب: ${productLink}\nواتساب: ${WHATSAPP_LINK}`,
+    haraj: `للبيع: ${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price.replace(/SAR/gi, 'ريال')}\n` : ''}\n- أصلي 100%\n- توصيل لجميع مناطق المملكة\n- الدفع عند الاستلام\n\nللتواصل واتساب: ${WHATSAPP_NUMBER}\n${WHATSAPP_LINK}`,
     truth_social: `${perfumeData.name} by ${perfumeData.brand}\n\nLuxury fragrance that speaks elegance\n\n${productLink}\n\n#Perfume #Luxury #${brand}`,
     youtube_thumbnail: '—',
     youtube_shorts: '—',
-    whatsapp: `السلام عليكم\n\n${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price}\n` : ''}\nرابط المنتج: ${productLink}\n\nللطلب تواصل معنا مباشرة`,
+    whatsapp: `السلام عليكم\n\n${perfumeData.name} من ${perfumeData.brand}\n\n${notes}\n${price ? `السعر: ${price.replace(/SAR/gi, 'ريال')}\n` : ''}\nرابط المنتج: ${productLink}\n\nللطلب تواصل معنا مباشرة`,
   };
 }
 
@@ -162,7 +190,7 @@ async function callOpenAI(prompt: string): Promise<string> {
     messages: [
       {
         role: 'system',
-        content: 'أنت خبير تسويق عطور فاخر ومتخصص SEO بمستوى عالمي. أجب بـ JSON فقط بدون أي نص إضافي. استخدم الهاشتاقات الأكثر بحثاً وتصدراً في كل منصة. لا تكرر كلمة مهووس أكثر من مرة في كل كابشن. مهووس متجر إلكتروني فقط — لا تقل زوروا.',
+        content: 'أنت خبير تسويق عطور فاخر ومتخصص SEO بمستوى عالمي. أجب بـ JSON فقط بدون أي نص إضافي. استخدم الهاشتاقات الأكثر بحثاً وتصدراً في كل منصة. لا تكرر كلمة مهووس أكثر من مرة في كل كابشن. مهووس متجر إلكتروني فقط — لا تقل زوروا. ممنوع كتابة أي مكون عطري بالإنجليزي — اكتب كل شيء بالعربي فقط. السعر يُكتب بالعربي مثل: 595 ريال.',
       },
       { role: 'user', content: prompt },
     ],

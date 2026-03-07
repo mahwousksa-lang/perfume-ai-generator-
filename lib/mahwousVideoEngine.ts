@@ -1,312 +1,410 @@
 // ============================================================
-// lib/mahwousVideoEngine.ts — Mahwous Video Content Engine v2
+// lib/mahwousVideoEngine.ts — Mahwous Video Content Engine v4
 //
-// SYSTEM DESIGN:
-//   - Vertical (9:16): شبابي حماسي — تيك توك + ريلز
-//   - Horizontal (16:9): ثقافي معلوماتي — يوتيوب
-//   - هوية مهووس: ذكر مرة واحدة فقط في الختام
-//   - لهجة سعودية (رياض/قصيم) — كلمات سهلة النطق
-//   - سيناريوهات متنوعة مبنية على ترندات 2025
-//   - بدون بخ عطر، بدون زيارة محل (متجر إلكتروني فقط)
-//   - 15-20 ثانية كحد أقصى
+// v4 IMPROVEMENTS:
+//   - Full tashkeel (تشكيل) on all voiceover scripts for better TTS
+//   - Enhanced cinematic video prompts (Kling AI Avatar v2 Pro style)
+//   - Better pronunciation: no ع-starting words, simpler vocabulary
+//   - Richer scene descriptions for more professional output
+//   - Consistent "مَهووس" brand voice
 //
-// PRONUNCIATION RULES:
-//   - تجنب حرف العين في بداية الكلمات قدر الإمكان
-//   - استخدام "ريحة/طيب" بدل "عطر" أحياناً
-//   - كتابة "مَهووس" بالتشكيل لضمان النطق الصحيح
-//   - تجنب الكلمات الصعبة على TTS العربي
-//   - لا تكرار لكلمة مهووس — مرة واحدة فقط بالختام
-//   - جمل قصيرة واضحة، بدون تعقيد
+// CRITICAL PRONUNCIATION RULES:
+//   1. "مَهووس" — always with tashkeel, mentioned ONCE at the end only
+//   2. NEVER start a word with ع (ain) — use alternatives:
+//      - "طيب" instead of "عطر"
+//      - "ريحة" instead of "عطر"
+//      - "حلو" instead of "عجيب"
+//   3. AVOID these hard-to-pronounce words:
+//      - منتقاة، استثنائي، مجاملة، تنتسى، ليصنعون
+//      - Any word with double consonants or rare Arabic letters
+//   4. Use SHORT simple sentences — max 8 words per sentence
+//   5. NO ingredient listing — only general descriptions
+//   6. Total script: 10-15 seconds (40-60 words max)
+//   7. Saudi dialect (Riyadh/Qassim) — natural spoken style
+//   8. NEVER say "زوروا" — online store only: "اطلبه"
+//   9. Each sentence ends with period for clear TTS pauses
+//   10. Avoid English words completely
+//   11. Add tashkeel to key words for correct TTS pronunciation
+//
+// VIDEO PROMPT RULES (CINEMATIC):
+//   - Ultra-high quality 3D Pixar animation style
+//   - Natural body language, direct eye contact
+//   - Confident but relaxed, like talking to a friend
+//   - Smooth movements, no sudden gestures
+//   - Professional cinematic lighting with golden tones
+//   - Shallow depth of field, premium color grading
+//   - NO spraying action
+//   - Scene-specific camera angles and movements
 // ============================================================
 
 import type { PerfumeData } from './types';
 
 // ═══════════════════════════════════════════════════════════════
-// ختامية مهووس — مرة واحدة فقط في نهاية الفيديو
+// ختامية مَهووس — مرة واحدة فقط مع تشكيل
 // ═══════════════════════════════════════════════════════════════
 
-const MAHWOUS_OUTROS = [
-  'اطلبه الحين من مَهووس',
-  'متوفر في متجر مَهووس، اطلبه وانت بمكانك',
-  'لا تفوتك، اطلبه من مَهووس الحين',
-  'جربه بنفسك، متوفر في مَهووس',
-  'لأنك تستاهل الأفخم، من مَهووس',
-];
-
-// ═══════════════════════════════════════════════════════════════
-// هوكات — أول 3 ثواني (ترندات 2025)
-// ═══════════════════════════════════════════════════════════════
-
-const HOOKS_VERTICAL = [
-  // ترند: Compliment Getter
-  'كل ما أحطه أحد يمدحني',
-  'تبي الكل يسألك وش ريحتك؟',
-  // ترند: Stop Scrolling
-  'وقف! هالريحة غيرت كل شي',
-  'لا تطنش، هالمعلومة تهمك',
-  // ترند: Blind Buy
-  'اشتريته بدون ما أشمه، وش صار؟',
-  // ترند: Secret Weapon
-  'سلاحي السري قبل أي طلعة',
-  // ترند: Challenge
-  'تحديت نفسي ألقى ريحة كاملة',
-  // ترند: Reaction
-  'ردة فعلي لما شميته أول مرة',
-  // ترند: Rating
-  'تقييمي الصريح، بدون مجاملة',
-  // ترند: Would You Wear
-  'تلبسه لموعد ولا لشغل؟',
-  // ترند: Signature Scent
-  'الريحة اللي صارت توقيعي',
-  // ترند: 3 Seconds
-  'ثلاث ثواني وتحكم بنفسك',
-  // ترند: ASMR Style
-  'اسمع صوت الفخامة',
-  // ترند: Talking Objects
-  'لو هالطيب يتكلم وش بيقول؟',
-];
-
-const HOOKS_HORIZONTAL = [
-  // ترند: Behind the Bottle
-  'القصة وراء هالطيب ما يعرفها أحد',
-  'هل تدري متى صُنع هالطيب؟',
-  // ترند: Fun Facts
-  'حقيقة بتغير نظرتك للطيب',
-  'معلومة ما يعرفها الا الخبراء',
-  // ترند: History
-  'تاريخ هالماركة يبدأ من قصة غريبة',
-  // ترند: Comparison
-  'ليش هالطيب يتفوق على اللي أغلى منه؟',
-  // ترند: Expert Opinion
-  'رأيي كخبير، هالطيب يستاهل؟',
-  // ترند: Controversy
-  'هالطيب عليه جدل كبير، خلني أوضح',
-  // ترند: Seasonal
-  'الطيب المثالي لهالموسم',
-  // ترند: Layering
-  'لو تخلطه مع طيب ثاني وش يصير؟',
+const OUTROS = [
+  'اِطلُبه الحين مِن مَهووس.',
+  'مُتوفِّر في مَهووس. اِطلُبه وانت بِمكانك.',
+  'لا تفوتك الفُرصة. اِطلُبه مِن مَهووس.',
+  'جَرِّبه بنَفسك. مُتوفِّر في مَهووس.',
+  'تِستاهل الأفخَم. مِن مَهووس.',
+  'حَصري في مَهووس. اِطلُبه الحين.',
 ];
 
 // ═══════════════════════════════════════════════════════════════
 // أدوات مساعدة
 // ═══════════════════════════════════════════════════════════════
 
-interface ScenarioTemplate {
+interface Scenario {
   id: string;
   name: string;
-  buildScript: (data: PerfumeData) => string;
-  videoPrompt: string;
+  build: (d: PerfumeData) => string;
+  prompt: string;
 }
 
-function pickRandom<T>(arr: T[]): T {
+function pick<T>(arr: T[]): T {
   return arr[Math.floor(Math.random() * arr.length)];
 }
 
-// تنظيف المكونات — كلمات قصيرة سهلة النطق
-function cleanNotes(data: PerfumeData): string {
-  if (!data.notes) return 'مكونات فاخرة';
-  // خذ أول 3-4 مكونات فقط
-  const parts = data.notes.split(/[,،•·\-]+/).map(s => s.trim()).filter(Boolean);
-  const clean = parts.slice(0, 3).join(' و');
-  return clean.length > 50 ? parts.slice(0, 2).join(' و') : clean;
+// اسم مختصر — أول كلمتين فقط
+function sName(d: PerfumeData): string {
+  const n = d.name || 'هالطيب';
+  const w = n.split(' ');
+  return w.length > 2 ? w.slice(0, 2).join(' ') : n;
 }
 
-// اسم مختصر سهل النطق
-function shortName(data: PerfumeData): string {
-  const name = data.name || 'هالطيب';
-  const words = name.split(' ');
-  if (words.length > 3) return words.slice(0, 3).join(' ');
-  return name;
+// اسم الماركة — كلمة واحدة فقط
+function bName(d: PerfumeData): string {
+  if (!d.brand) return '';
+  const w = d.brand.split(' ');
+  return w[0] || '';
 }
 
-// اسم الماركة
-function brandName(data: PerfumeData): string {
-  return data.brand || '';
+// وصف بسيط بدون تعداد مكونات — مع تشكيل
+function simpleDesc(): string {
+  const descs = [
+    'ريحَته فَخمة وثَباته قَوي',
+    'ريحة راقِية تدوم طول اليَوم',
+    'ريحَته تِجذب كُل مَن حَولك',
+    'ريحة مُمَيَّزة ما تِتكرَّر',
+    'ريحَته تِخطف الأنظار',
+    'ريحة تِجمع بين الفَخامة والثَبات',
+    'ريحة تِخليك مُمَيَّز وسط الكُل',
+    'ريحَته تِملا المَكان فَخامة',
+  ];
+  return pick(descs);
+}
+
+// تقصير النص — 15 ثانية = 60 كلمة كحد أقصى
+function trim(text: string, maxWords: number = 55): string {
+  const words = text.split(/\s+/).filter(Boolean);
+  if (words.length <= maxWords) return text;
+  const trimmed = words.slice(0, maxWords).join(' ');
+  const lastDot = trimmed.lastIndexOf('.');
+  if (lastDot > trimmed.length * 0.6) return trimmed.substring(0, lastDot + 1);
+  return trimmed + '.';
 }
 
 // ═══════════════════════════════════════════════════════════════
-// سيناريوهات الفيديو العمودي (9:16) — تيك توك + ريلز
-// 15-20 ثانية، شبابي حماسي، هوك + محتوى + ختام
+// وصف الشخصية والجودة البصرية — سينماتوغرافي محسّن
 // ═══════════════════════════════════════════════════════════════
 
-const VERTICAL_SCENARIOS: ScenarioTemplate[] = [
+const CHAR = 'A stylish Arab man in his late 20s, black swept-back hair with clean fade, thick full black beard perfectly groomed, wearing an elegant crisp white thobe with subtle embroidery. Holds a luxury perfume bottle naturally at chest level. Warm olive skin tone, confident charismatic expression.';
+
+const QUALITY = `Ultra-high quality 3D Pixar-style animation rendered in 4K. 
+Cinematic golden-hour lighting with warm amber key light and soft blue fill. 
+Smooth natural lip-sync movements matching Arabic speech. 
+Direct eye contact with camera lens, talking intimately to viewer like a close trusted friend. 
+Confident relaxed body language with subtle hand gestures. 
+NO spraying action ever. 
+Professional Hollywood-grade color grading with rich warm tones. 
+Shallow depth of field f/1.4 with creamy bokeh background. 
+Premium luxury advertising quality. 
+Subtle lens flare and volumetric light rays. 
+Film grain texture for cinematic feel.`;
+
+// ═══════════════════════════════════════════════════════════════
+// سيناريوهات عمودي (9:16) — تيك توك + ريلز
+// شبابي حماسي — 12-15 ثانية — مع تشكيل كامل
+// ═══════════════════════════════════════════════════════════════
+
+const V_SCENARIOS: Scenario[] = [
   {
-    id: 'compliment_magnet',
+    id: 'compliment',
     name: 'مغناطيس المدح',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `كل ما أحطه أحد يقولي وش هالريحة الحلوة. ${n}، ثباته خرافي وريحته تجذب الكل. لو تبي الناس تمدحك، هذا اختيارك.`;
+    build: (d) => {
+      const n = sName(d);
+      return `كُل ما أحُطّه النّاس تِمدَحني. ${n}. ${simpleDesc()}. لو تبي الكُل يِسألك وِش ريحتك هذا هو.`;
     },
-    videoPrompt: 'Character reacts to imaginary compliments with proud confident smile, holds perfume up to camera. Fun social media energy, quick dynamic movement.',
+    prompt: `Character reacts to imaginary compliments with proud confident smile, slowly raises perfume bottle to camera in hero shot. 
+Fun energetic social media energy with quick confident head movements. 
+Camera: starts medium shot then smooth dolly-in to close-up on face and bottle. 
+Background: bright gradient with floating golden particles. 
+Lighting: vibrant ring light with warm color temperature.`,
   },
   {
-    id: 'blind_buy_reaction',
-    name: 'شريته بدون ما أشمه',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `اشتريته بدون ما أشمه، وش صار؟ ${n}، فيه ${notes}. أول ما فتحته انصدمت، ريحة فخمة ما توقعتها. صراحة من أحلى القرارات.`;
+    id: 'blind_buy',
+    name: 'شراء بدون شم',
+    build: (d) => {
+      const n = sName(d);
+      return `اِشتريته بدون ما أشُمّه. ${n}. أوَّل ما فتحته اِنصدمت. ريحة فَخمة ما توقَّعتها. مِن أحلى القرارات.`;
     },
-    videoPrompt: 'Character opens a box with surprise and excitement, smells the perfume and his eyes widen with amazement. Unboxing style, energetic reactions.',
+    prompt: `Character opens elegant gift box with genuine surprise expression, lifts perfume bottle, brings to nose, eyes widen with amazement and delight. 
+Unboxing style with authentic excitement and natural reactions. 
+Camera: overhead shot of box opening, then cut to close-up reaction face. 
+Background: clean modern minimalist white marble surface with soft shadows. 
+Lighting: soft overhead diffused light with warm accent.`,
   },
   {
-    id: 'secret_weapon',
+    id: 'secret',
     name: 'السلاح السري',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `سلاحي السري قبل أي طلعة. ${n}، يخليك مميز وسط أي مكان. ثباته يدوم طول اليوم وريحته تخطف الأنظار. ما أطلع بدونه أبد.`;
+    build: (d) => {
+      const n = sName(d);
+      return `سِلاحي السِّري قبل أي طَلعة. ${n}. يِخلّيك مُمَيَّز وسط أي مكان. ثَباته يدوم طول اليَوم.`;
     },
-    videoPrompt: 'Character getting ready, adjusting outfit, then reveals perfume dramatically like a secret weapon. Stylish golden lighting, confident energy.',
+    prompt: `Character getting ready in front of elegant mirror, adjusts thobe collar, then dramatically reveals perfume bottle from behind back with confident wink. 
+Stylish preparation montage feel. 
+Camera: mirror reflection shot with rack focus from reflection to character. 
+Background: luxurious dressing room with warm golden sconces. 
+Lighting: dramatic side lighting creating depth and mystery.`,
   },
   {
-    id: 'talking_perfume',
+    id: 'talking',
     name: 'الطيب يتكلم',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `لو هالطيب يتكلم بيقول: أنا ${n}، فيني ${notes}. اللي يحطني ما يقدر يستغني عني. ريحتي تدوم وتخلي الكل يلتفت.`;
+    build: (d) => {
+      const n = sName(d);
+      return `لو هالطّيب يِتكلَّم بيقول أنا ${n}. اللي يِحُطّني ما يِقدر يِستغني. ريحتي تدوم وتِخلّي الكُل يِلتفت.`;
     },
-    videoPrompt: 'Character holds perfume close to ear as if listening to it talk, then nods and smiles at camera. Creative trending style, playful energy.',
+    prompt: `Character holds perfume bottle near ear as if listening to it whisper, nods knowingly, then turns to camera with playful conspiratorial smile. 
+Creative imaginative storytelling style. 
+Camera: starts tight on bottle near ear, pulls back to medium shot as character addresses viewer. 
+Background: colorful trendy gradient with abstract perfume mist effects. 
+Lighting: creative colored rim lights with warm key.`,
   },
   {
-    id: 'rating_honest',
+    id: 'rating',
     name: 'تقييم صريح',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `تقييمي الصريح بدون مجاملة. ${n}، الثبات عشرة من عشرة، الفوحان ممتاز، القيمة مقابل السعر ما لها كلام. من أفضل اللي جربتها.`;
+    build: (d) => {
+      const n = sName(d);
+      return `تَقييمي الصَّريح. ${n}. الثَّبات عَشرة مِن عَشرة. الريحة مُمتازة. مِن أفضل اللي جرَّبتها صَراحة.`;
     },
-    videoPrompt: 'Character counts on fingers while reviewing, animated expressions, gives enthusiastic thumbs up at end. Quick cuts, review format style.',
+    prompt: `Character counts on fingers while reviewing, pauses thoughtfully, then gives enthusiastic thumbs up with big genuine smile. 
+Quick-cut review format with dynamic energy. 
+Camera: medium shot with subtle zoom on each point, close-up on thumbs up. 
+Background: clean studio with floating rating graphics and stars. 
+Lighting: bright even studio lighting with subtle warm tone.`,
   },
   {
-    id: 'before_date',
+    id: 'date_night',
     name: 'قبل الموعد',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `تبي تطلع لموعد مهم؟ ${n} هو اللي يكمل لوكك. ريحته تعطيك ثقة وحضور، والكل بيلاحظ الفرق. جربه وشوف بنفسك.`;
+    build: (d) => {
+      const n = sName(d);
+      return `تبي تِطلع لمَوعد مُهم؟ ${n} يِكمّل لوكك. ريحَته تِمنحك ثِقة وحُضور. جَرِّبه وشوف الفَرق.`;
     },
-    videoPrompt: 'Character adjusts collar, picks up perfume confidently, presents it to camera with a charming smile. Date-night atmosphere, warm romantic lighting.',
+    prompt: `Character adjusts collar in mirror, picks up perfume bottle with deliberate confident motion, applies with charming knowing smile. 
+Date-night preparation atmosphere. 
+Camera: starts wide establishing shot, smooth track-in to medium close-up. 
+Background: elegant warm-toned room with soft ambient candle-like lighting. 
+Lighting: warm romantic golden hour simulation with soft shadows.`,
   },
   {
-    id: 'first_impression',
-    name: 'ردة الفعل الأولى',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `ردة فعلي لما شميت ${n} أول مرة. فيه ${notes}، والريحة فخمة بشكل ما توقعته. صراحة انبهرت، ومن يومها صار المفضل.`;
+    id: 'reaction',
+    name: 'ردة الفعل',
+    build: (d) => {
+      const n = sName(d);
+      return `رِدّة فِعلي لمّا شمّيت ${n} أوَّل مرّة. ريحة فَخمة ما توقَّعتها. مِن يومها صار المُفضَّل.`;
     },
-    videoPrompt: 'Character smells perfume for first time, shows genuine surprise and amazement reaction. Close-up on facial expressions, authentic reaction style.',
+    prompt: `Character brings perfume to nose, inhales deeply, face transforms from neutral to genuine amazement and pure delight. 
+Authentic first-impression reaction video style. 
+Camera: extreme close-up on face during smell, then pull back to show full excited reaction. 
+Background: soft blurred warm tones. 
+Lighting: soft beauty lighting with warm fill, catch lights in eyes.`,
   },
   {
-    id: 'signature_scent',
-    name: 'التوقيع الخاص',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `الريحة اللي صارت توقيعي الخاص. ${n}، كل ما أدخل مكان الناس تعرف إني أنا. ريحة مميزة ما تتكرر، وثباتها يدوم للمسا.`;
+    id: 'signature',
+    name: 'التوقيع',
+    build: (d) => {
+      const n = sName(d);
+      return `الريحة اللي صارت تَوقيعي. ${n}. كُل ما أدخل مكان النّاس تِعرفني. ريحة مُمَيَّزة وثَبات قَوي.`;
     },
-    videoPrompt: 'Character walks in confidently, people notice him. He holds up perfume proudly. Cinematic slow motion entrance, confident charismatic energy.',
+    prompt: `Character walks in confidently through doorway in slow motion, holds perfume bottle proudly at chest level, subtle head nod to camera. 
+Cinematic entrance scene with authority. 
+Camera: low angle tracking shot following character entrance, then medium portrait shot. 
+Background: luxury lobby with marble and warm lighting. 
+Lighting: dramatic backlight creating silhouette then revealing face with warm key.`,
   },
   {
-    id: 'three_seconds',
-    name: 'ثلاث ثواني',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `ثلاث ثواني وتحكم بنفسك. ${n}، فيه ${notes}. ريحة تجمع بين الفخامة والثبات. اللي جربه ما رجع لغيره.`;
+    id: 'countdown',
+    name: 'العد التنازلي',
+    build: (d) => {
+      const n = sName(d);
+      return `ثلاث ثَواني وتِحكم بنَفسك. ${n}. ريحة فَخمة وثَبات قَوي. اللي جرَّبه ما رِجع لغيره.`;
     },
-    videoPrompt: 'Character holds up 3 fingers, counts down, then presents perfume with excitement. Fast-paced, countdown challenge style, high energy.',
+    prompt: `Character holds up 3 fingers, counts down dramatically with each finger, then presents perfume bottle with explosive excitement. 
+Fast-paced countdown challenge style. 
+Camera: quick cuts synced with countdown, final reveal in slow motion. 
+Background: high energy bright colors with countdown graphics. 
+Lighting: dynamic changing colored lights synced with countdown.`,
   },
   {
-    id: 'collection_pick',
-    name: 'اختيار المجموعة',
-    buildScript: (data) => {
-      const n = shortName(data);
-      return `من كل مجموعتي اخترت لكم ${n}. هالطيب له مكانة خاصة، ثباته قوي وريحته راقية. لو تبي تبدأ مجموعتك، ابدأ فيه.`;
+    id: 'collection',
+    name: 'من المجموعة',
+    build: (d) => {
+      const n = sName(d);
+      return `مِن كُل مَجموعتي اِخترت لكم ${n}. هالطّيب له مَكانة خاصّة. ثَباته قَوي وريحَته راقِية.`;
     },
-    videoPrompt: 'Character browses his perfume collection shelf, picks one special bottle and presents it to camera. Elegant shelf display, warm lighting.',
+    prompt: `Character browses elegant perfume shelf display, hand glides over bottles, deliberately picks one special bottle, presents to camera with pride. 
+Collector showcase style with reverence. 
+Camera: tracking shot along shelf, then close-up on hand selection, medium shot presentation. 
+Background: elegant dark wood shelf with warm spot lighting on bottles. 
+Lighting: warm accent spots on bottles, soft key on character face.`,
+  },
+  {
+    id: 'stop_scroll',
+    name: 'وقف وشوف',
+    build: (d) => {
+      const n = sName(d);
+      return `وَقّف. هالمَعلومة تِهمّك. ${n}. ${simpleDesc()}. لو ما جرَّبته فاتك شي كبير.`;
+    },
+    prompt: `Character makes dramatic stop gesture with palm toward camera, pauses, then leans in closer to camera as if sharing a secret, reveals perfume. 
+Scroll-stopping attention grab format. 
+Camera: starts with fast zoom to palm, then intimate close-up as character leans in. 
+Background: bold vibrant gradient that demands attention. 
+Lighting: bright punchy front lighting with dramatic rim light.`,
+  },
+  {
+    id: 'challenge',
+    name: 'التحدي',
+    build: (d) => {
+      const n = sName(d);
+      return `تحدَّيت نَفسي ألقى ريحة كامِلة بكُل شي. ${n}. فَخامة وثَبات وسِعر مُمتاز. التَّحدي نِجح.`;
+    },
+    prompt: `Character accepts challenge with determined expression, examines perfume bottle carefully, tests it, then celebrates with victorious fist pump and big smile. 
+Challenge accepted and completed format. 
+Camera: dynamic angles following the challenge journey, triumphant final shot. 
+Background: fun competitive atmosphere with challenge graphics. 
+Lighting: energetic bright lighting with celebratory warm burst at end.`,
   },
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// سيناريوهات الفيديو الأفقي (16:9) — يوتيوب
-// 18-22 ثانية، ثقافي معلوماتي قصصي
+// سيناريوهات أفقي (16:9) — يوتيوب
+// ثقافي معلوماتي — 15-18 ثانية — مع تشكيل كامل
 // ═══════════════════════════════════════════════════════════════
 
-const HORIZONTAL_SCENARIOS: ScenarioTemplate[] = [
+const H_SCENARIOS: Scenario[] = [
   {
-    id: 'brand_history',
+    id: 'history',
     name: 'تاريخ الماركة',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const b = brandName(data);
-      const notes = cleanNotes(data);
-      return `القصة وراء هالطيب ما يعرفها أحد. ${b ? `${b} من أعرق بيوت الطيب في العالم.` : 'هالماركة لها تاريخ طويل.'} ${n} يجمع بين ${notes} بطريقة استثنائية. كل مكون فيه منتقى بدقة ليعطيك تجربة ما تنتسى.`;
+    build: (d) => {
+      const n = sName(d);
+      const b = bName(d);
+      return `القِصّة وراء هالطّيب ما يِعرفها كثير. ${b ? `${b} مِن أقدم بيوت الطّيب.` : 'هالماركة لها تاريخ طَويل.'} ${n}. ${simpleDesc()}. كُل تَفصيلة فيه مَدروسة بدِقّة.`;
     },
-    videoPrompt: 'Character sits in elegant study, holds perfume and speaks knowledgeably to camera like documentary presenter. Warm cinematic lighting, professional wide shot, books and luxury items in background.',
+    prompt: `Character sits in elegant leather chair in sophisticated study, speaks knowledgeably and passionately to camera about brand heritage. 
+Documentary presenter style with gravitas and warmth. 
+Camera: wide establishing shot of study, then medium shot with subtle push-in during key points. 
+Background: rich wood-paneled study with leather-bound books, vintage perfume bottles, warm ambient lighting. 
+Lighting: warm cinematic three-point lighting with practical desk lamp accent.`,
   },
   {
-    id: 'expert_breakdown',
-    name: 'تحليل الخبير',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `رأيي كخبير، هالطيب يستاهل مكان في مجموعتك. ${n} فيه ${notes}. الطبقة الأولى تجذبك، الوسطى تثبت الريحة، والقاعدة تخليها تدوم ساعات. تركيبة مدروسة بذكاء.`;
+    id: 'expert',
+    name: 'رأي الخبير',
+    build: (d) => {
+      const n = sName(d);
+      return `رأيي كخَبير. هالطّيب يِستاهل مكان في مَجموعتك. ${n}. الطَّبقة الأولى تِجذبك والقاعِدة تِخلّيها تدوم ساعات. تَركيبة ذَكيّة.`;
     },
-    videoPrompt: 'Character explains perfume layers with hand gestures like a professor. Elegant desk setting, warm lighting, educational presentation style, medium shot.',
+    prompt: `Character explains with professional authoritative hand gestures, occasionally gestures to perfume bottle on elegant display stand. 
+Expert review format with educational depth. 
+Camera: medium shot with subtle side angle, occasional close-up inserts of bottle details. 
+Background: elegant desk with perfume on crystal stand, soft blurred luxury office. 
+Lighting: warm professional key light with soft fill, accent on bottle.`,
   },
   {
-    id: 'controversy_opinion',
+    id: 'debate',
     name: 'جدل ورأي',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const b = brandName(data);
-      return `هالطيب عليه جدل كبير، خلني أوضح. ${n}${b ? ` من ${b}` : ''} البعض يقول سعره مبالغ فيه، بس لما تجربه تفهم ليش. الثبات خرافي والريحة فخمة. رأيي الصريح؟ يستاهل كل ريال.`;
+    build: (d) => {
+      const n = sName(d);
+      const b = bName(d);
+      return `هالطّيب فيه جَدل كبير. ${n}${b ? ` مِن ${b}` : ''}. البَعض يقول سِعره مُبالغ فيه. بس لمّا تِجرّبه تِفهم ليش. الثَّبات قَوي والريحة فَخمة. يِستاهل كُل ريال.`;
     },
-    videoPrompt: 'Character presents both sides of argument with expressive hand gestures, then gives confident verdict. Professional studio setting, balanced lighting, debate-style presentation.',
+    prompt: `Character presents both sides of debate with expressive balanced gestures, weighs pros and cons with hands, then gives confident decisive verdict with firm nod. 
+Professional debate and analysis format. 
+Camera: medium shot with dynamic angle changes for each argument, centered final verdict shot. 
+Background: professional studio with subtle split lighting suggesting two sides. 
+Lighting: balanced professional lighting, slightly warmer on verdict moment.`,
   },
   {
-    id: 'seasonal_guide',
-    name: 'دليل الموسم',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `الطيب المثالي لهالموسم. ${n} فيه ${notes}، وهالمكونات تتفاعل مع الجو بشكل مثالي. ريحته تكون أحلى في الأجواء الباردة وتدوم أطول. نصيحتي خلوه في مجموعتكم الأساسية.`;
+    id: 'season',
+    name: 'طيب الموسم',
+    build: (d) => {
+      const n = sName(d);
+      return `الطّيب المِثالي لهالمَوسم. ${n}. مُكوّناته تِتفاعل مع الجَو بشكل مِثالي. ريحَته تكون أحلى في البَرد وتدوم أطوَل. نَصيحتي خلّوه في مَجموعتكم.`;
     },
-    videoPrompt: 'Character presents perfume with seasonal context, warm cozy setting. Professional composition, informative mood, medium-wide shot with elegant background.',
+    prompt: `Character presents perfume with seasonal context, gestures to suggest weather and atmosphere, holds bottle warmly. 
+Seasonal recommendation format with cozy informative mood. 
+Camera: medium-wide establishing shot, then medium shot with warm intimate feel. 
+Background: cozy elegant setting with seasonal elements, warm textures and fabrics. 
+Lighting: warm golden ambient lighting suggesting the season, soft and inviting.`,
   },
   {
-    id: 'fun_facts',
+    id: 'facts',
     name: 'حقائق مثيرة',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const b = brandName(data);
-      return `حقيقة بتغير نظرتك للطيب. ${b ? `هل تدري إن ${b} بدأت كشركة صغيرة وصارت من أكبر بيوت الطيب؟` : 'هالماركة لها قصة نجاح مذهلة.'} ${n} من أنجح إصداراتهم. معلومة حلوة، الطيب الفاخر يتفاعل مع بشرتك ويعطي ريحة مختلفة لكل شخص.`;
+    build: (d) => {
+      const n = sName(d);
+      const b = bName(d);
+      return `حَقيقة بتِغيّر نَظرتك. ${b ? `هل تِدري إن ${b} بَدأت كشَركة صغيرة؟` : 'هالماركة لها قِصّة نَجاح مُذهلة.'} ${n} مِن أنجح إصداراتهم. الطّيب الفاخر يِتفاعل مع بَشرتك ويِعطي ريحة مُختلفة لكُل شخص.`;
     },
-    videoPrompt: 'Character shares facts enthusiastically, holding perfume with educational gestures. Library background with books, warm lighting, engaging storytelling style.',
+    prompt: `Character shares fascinating facts with enthusiastic educational energy, uses expressive storytelling gestures, leans in for key revelations. 
+Educational storytelling format with genuine passion. 
+Camera: medium shot with push-in during surprising facts, occasional close-up for emphasis. 
+Background: elegant library setting with warm ambient lighting, books and artifacts. 
+Lighting: warm storytelling lighting with subtle dramatic shifts during revelations.`,
   },
   {
-    id: 'value_analysis',
+    id: 'value',
     name: 'تحليل القيمة',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const b = brandName(data);
-      return `ليش هالطيب يتفوق على اللي أغلى منه؟ ${n}${b ? ` من ${b}` : ''} يثبت إن الجودة مو بالسعر. ثباته استثنائي وريحته منافسة لأغلى الماركات. لو تبي قيمة حقيقية، هذا اختيارك.`;
+    build: (d) => {
+      const n = sName(d);
+      return `ليش هالطّيب يِتفوَّق على اللي أغلى مِنه؟ ${n}. الجَودة مو بالسِّعر. ثَباته قَوي وريحَته مُنافسة لأغلى الماركات. لو تبي قيمة حَقيقية هذا اِختيارك.`;
     },
-    videoPrompt: 'Character compares and analyzes thoughtfully, confident gestures showing value. Professional setting, balanced lighting, comparison-style presentation.',
+    prompt: `Character compares thoughtfully with analytical gestures, weighs value proposition with confident balanced assessment. 
+Value analysis and comparison format. 
+Camera: medium shot with clean composition, occasional two-shot with bottle for scale. 
+Background: professional clean setting suggesting objectivity and analysis. 
+Lighting: balanced professional lighting with warm undertones.`,
   },
   {
-    id: 'layering_tip',
+    id: 'layering',
     name: 'نصيحة الخلط',
-    buildScript: (data) => {
-      const n = shortName(data);
-      const notes = cleanNotes(data);
-      return `لو تخلطه مع طيب ثاني وش يصير؟ ${n} فيه ${notes}، ولو تضيف عليه طيب خشبي تحصل على مزيج خرافي. سر الخبراء إنهم يخلطون الطبقات ليصنعون ريحة فريدة.`;
+    build: (d) => {
+      const n = sName(d);
+      return `لو تِخلطه مع طيب ثاني وِش يِصير؟ ${n}. لو تِضيف طيب خَشبي تِحصل على مَزيج رهيب. سِر الخُبراء إنّهم يِخلطون الطَّبقات لريحة فَريدة.`;
     },
-    videoPrompt: 'Character demonstrates layering concept with two bottles, mixing gesture. Expert workshop setting, warm lighting, educational yet engaging style.',
+    prompt: `Character demonstrates layering technique with two elegant bottles, shows combination process with expert precision and excitement about the result. 
+Expert workshop and tutorial format. 
+Camera: medium shot establishing, close-up inserts on bottles during layering demonstration. 
+Background: elegant perfumer workshop setting with warm wood and glass elements. 
+Lighting: warm workshop lighting with accent spots on bottles and hands.`,
+  },
+  {
+    id: 'journey',
+    name: 'رحلة الريحة',
+    build: (d) => {
+      const n = sName(d);
+      return `خلّوني آخذكم في رِحلة مع ${n}. أوَّل ما تِحُطّه تِحس بنَفحة مُنعشة. بعد ساعة تِتحوَّل لريحة دافِية. وبالليل تِصير أغنى وأعمق. تَجربة كامِلة.`;
+    },
+    prompt: `Character takes viewer on olfactory journey through time, gestures showing progression and transformation, expressions change with each phase. 
+Cinematic time-lapse storytelling format. 
+Camera: smooth tracking shot with subtle lighting transitions suggesting time passing. 
+Background: transitions from bright morning to warm afternoon to rich evening atmosphere. 
+Lighting: dynamic lighting that shifts from cool bright to warm golden to rich amber through the narrative.`,
   },
 ];
 
 // ═══════════════════════════════════════════════════════════════
-// محرك التوليد الرئيسي
+// محرك التوليد
 // ═══════════════════════════════════════════════════════════════
 
 export interface GeneratedVideoContent {
@@ -317,81 +415,61 @@ export interface GeneratedVideoContent {
   hook: string;
 }
 
-// بناء النص الكامل: هوك + سيناريو + ختام مهووس
-function buildFinalScript(hook: string, scenarioScript: string, outro: string): string {
-  // السيناريو يبدأ بالهوك الخاص به، نستبدله بالهوك المختار
-  // ثم نضيف ختام مهووس
-  return `${scenarioScript} ${outro}.`;
-}
-
-// حساب مدة النص التقريبية بالثواني (4 كلمات/ثانية بالعربي)
-function estimateDuration(text: string): number {
-  const words = text.split(/\s+/).filter(Boolean).length;
-  return words / 4;
-}
-
-// تقصير النص إذا تجاوز 22 ثانية
-function trimToMaxDuration(text: string, maxSeconds: number = 22): string {
-  const words = text.split(/\s+/).filter(Boolean);
-  const maxWords = maxSeconds * 4;
-  if (words.length <= maxWords) return text;
-  return words.slice(0, maxWords).join(' ') + '.';
-}
-
-// ═══════════════════════════════════════════════════════════════
-// بناء video prompt محسّن للمؤثرات ولغة الجسد
-// ═══════════════════════════════════════════════════════════════
-
-const CHARACTER_DESC = 'A stylish Arab man with black swept-back hair, thick full black beard, wearing elegant black thobe with gold bisht. He holds a luxury perfume bottle.';
-
-const VISUAL_QUALITY = 'Ultra-high quality 3D Pixar/Disney animation style. Cinematic golden lighting, premium advertising quality. Smooth natural movements, confident body language, direct eye contact with camera as if talking to viewer. NO perfume spraying action. Professional color grading, shallow depth of field.';
-
 export function generateVerticalContent(perfumeData: PerfumeData): GeneratedVideoContent {
-  const scenario = pickRandom(VERTICAL_SCENARIOS);
-  const outro = pickRandom(MAHWOUS_OUTROS);
+  const sc = pick(V_SCENARIOS);
+  const outro = pick(OUTROS);
+  const script = sc.build(perfumeData);
+  const full = `${script} ${outro}`;
+  const final = trim(full, 55);
 
-  const scenarioScript = scenario.buildScript(perfumeData);
-  const fullScript = buildFinalScript('', scenarioScript, outro);
-  const finalScript = trimToMaxDuration(fullScript, 20);
+  const hook = script.split(/[.!]/)[0]?.trim() || '';
+  const vp = `${sc.prompt}
 
-  // استخراج الهوك من أول جملة
-  const firstSentence = scenarioScript.split(/[.!،]/)[0] || '';
+CHARACTER: ${CHAR}
 
-  const videoPrompt = `${scenario.videoPrompt} ${CHARACTER_DESC} ${VISUAL_QUALITY} Vertical 9:16 composition. Energetic youthful vibe, TikTok/Reels trending style.`;
+QUALITY: ${QUALITY}
+
+COMPOSITION: Vertical 9:16 portrait orientation optimized for mobile viewing. 
+Energetic youthful vibe matching TikTok and Instagram Reels trending aesthetic. 
+Character speaks directly to camera with genuine enthusiasm and charisma. 
+Fast-paced editing rhythm with smooth transitions.`;
 
   return {
-    voiceoverText: finalScript,
-    videoPrompt,
-    scenarioId: scenario.id,
-    scenarioName: scenario.name,
-    hook: firstSentence.trim(),
+    voiceoverText: final,
+    videoPrompt: vp,
+    scenarioId: sc.id,
+    scenarioName: sc.name,
+    hook,
   };
 }
 
 export function generateHorizontalContent(perfumeData: PerfumeData): GeneratedVideoContent {
-  const scenario = pickRandom(HORIZONTAL_SCENARIOS);
-  const outro = pickRandom(MAHWOUS_OUTROS);
+  const sc = pick(H_SCENARIOS);
+  const outro = pick(OUTROS);
+  const script = sc.build(perfumeData);
+  const full = `${script} ${outro}`;
+  const final = trim(full, 60);
 
-  const scenarioScript = scenario.buildScript(perfumeData);
-  const fullScript = buildFinalScript('', scenarioScript, outro);
-  const finalScript = trimToMaxDuration(fullScript, 22);
+  const hook = script.split(/[.!]/)[0]?.trim() || '';
+  const vp = `${sc.prompt}
 
-  const firstSentence = scenarioScript.split(/[.!،]/)[0] || '';
+CHARACTER: ${CHAR}
 
-  const videoPrompt = `${scenario.videoPrompt} ${CHARACTER_DESC} ${VISUAL_QUALITY} Horizontal 16:9 composition. Professional documentary feel, warm informative atmosphere, YouTube quality.`;
+QUALITY: ${QUALITY}
+
+COMPOSITION: Horizontal 16:9 widescreen cinematic composition optimized for YouTube. 
+Professional documentary feel with warm informative atmosphere. 
+Character speaks to camera with authority, warmth, and genuine expertise. 
+Measured pacing with elegant transitions and breathing room.`;
 
   return {
-    voiceoverText: finalScript,
-    videoPrompt,
-    scenarioId: scenario.id,
-    scenarioName: scenario.name,
-    hook: firstSentence.trim(),
+    voiceoverText: final,
+    videoPrompt: vp,
+    scenarioId: sc.id,
+    scenarioName: sc.name,
+    hook,
   };
 }
-
-// ═══════════════════════════════════════════════════════════════
-// تصدير
-// ═══════════════════════════════════════════════════════════════
 
 export function generateVideoContents(perfumeData: PerfumeData): {
   vertical: GeneratedVideoContent;
