@@ -4,7 +4,7 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { Toaster, toast } from 'sonner';
 import {
   ArrowLeft, Loader2, Link2, Sparkles, Video, Image, Upload, X,
-  Calendar, Download, FileText, Save, Clock, Package, Brain,
+  Calendar, Download, FileText, Save, Clock, Package, Brain, Archive,
 } from 'lucide-react';
 
 import type {
@@ -27,6 +27,7 @@ import { addToQueue, getQueue, downloadCSV, ALL_PLATFORMS, type QueuedPost } fro
 // Make.com removed — Metricool is the sole publishing engine
 import MetricoolDashboard from '@/components/MetricoolDashboard';
 import SmartPublishButton from '@/components/SmartPublishButton';
+import SavedPosts from '@/components/SavedPosts';
 import { optimizeCaption } from '@/lib/selfLearningEngine';
 import { schedulePost } from '@/lib/metricoolClient';
 
@@ -38,7 +39,7 @@ export default function HomePage() {
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [captionResult, setCaptionResult] = useState<CaptionResult | null>(null);
   const [scenarios, setScenarios] = useState<VideoScenario[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'videos' | 'schedule' | 'intelligence'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'videos' | 'schedule' | 'saved' | 'intelligence'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
 
   // ── Video generation state ──────────────────────────────────────────────
@@ -396,7 +397,64 @@ export default function HomePage() {
       }
 
       setStep('output');
-      toast.success('حملتك جاهزة لجميع المنصات!');
+      toast.success('حملتك جاهزة لجميع المنصات! جاري توليد الفيديوهات تلقائياً...');
+
+      // Step 5: توليد الفيديو تلقائياً بعد الصور
+      try {
+        const storyImgUrl = completedImages.find(i => i.format === 'story')?.url;
+        const landscapeImgUrl = completedImages.find(i => i.format === 'landscape')?.url;
+        if (storyImgUrl || landscapeImgUrl) {
+          setVideoInfos([
+            { id: '', aspectRatio: '9:16', status: 'pending', progress: 0 },
+            { id: '', aspectRatio: '16:9', status: 'pending', progress: 0 },
+          ]);
+          const videoRes = await fetch('/api/generate-video', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              perfumeData: product,
+              imageUrl: storyImgUrl || landscapeImgUrl,
+              landscapeImageUrl: landscapeImgUrl || storyImgUrl,
+              vibe: scrapeData.recommendation.vibe,
+            }),
+          });
+          if (videoRes.ok) {
+            const videoData = await videoRes.json();
+            setVoiceoverText(videoData.voiceoverText || '');
+            const newVideoInfos: HedraVideoInfo[] = videoData.videos.map((v: {
+              id: string; aspectRatio: '9:16' | '16:9'; status: string;
+              error?: string; voiceoverText?: string; scenarioName?: string; hook?: string;
+            }) => ({
+              id: v.id, aspectRatio: v.aspectRatio,
+              status: v.status as HedraVideoInfo['status'],
+              progress: 0, error: v.error,
+              voiceoverText: v.voiceoverText, scenarioName: v.scenarioName, hook: v.hook,
+            }));
+            setVideoInfos(newVideoInfos);
+            videoInfosRef.current = newVideoInfos;
+            const hasPending = newVideoInfos.some(
+              (v) => v.id && v.status !== 'failed' && v.status !== 'error'
+            );
+            if (hasPending) setIsPollingVideos(true);
+            // توليد كابشنات الفيديو
+            try {
+              const vcRes = await fetch('/api/video-captions', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ perfumeData: product, productUrl: productUrl.trim(), vibe: scrapeData.recommendation.vibe }),
+              });
+              if (vcRes.ok) {
+                const vcData = await vcRes.json();
+                setVideoCaptions(vcData.captions);
+              }
+            } catch { console.warn('Video captions auto-generation failed'); }
+            toast.info('جاري توليد الفيديوهات — سيتم تحديث الحالة تلقائياً');
+          }
+        }
+      } catch (videoErr) {
+        console.warn('Auto video generation failed:', videoErr);
+        toast.info('فشل التوليد التلقائي للفيديو — يمكنك توليده يدوياً من تاب الفيديو');
+      }
     } catch (e: unknown) {
       const errorMessage = e instanceof Error ? e.message : 'حدث خطأ غير متوقع.';
       toast.error(errorMessage);
@@ -431,9 +489,33 @@ export default function HomePage() {
       status: 'draft',
     };
     addToQueue(post);
+
+    // حفظ في SavedPosts أيضاً
+    try {
+      const savedPosts = JSON.parse(localStorage.getItem('mahwous_saved_posts') || '[]');
+      savedPosts.unshift({
+        id: `post_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`,
+        timestamp: new Date().toISOString(),
+        perfumeName: perfumeData.name,
+        perfumeBrand: perfumeData.brand,
+        productUrl,
+        storyImageUrl: storyImg,
+        postImageUrl: postImg,
+        landscapeImageUrl: landscapeImg,
+        verticalVideoUrl: verticalVideo,
+        horizontalVideoUrl: horizontalVideo,
+        captions: (captionResult?.captions || {}) as Record<string, string>,
+        videoCaptions: (videoCaptions || {}) as Record<string, string>,
+        status: 'draft',
+      });
+      // الاحتفاظ بآخر 50 منشور فقط
+      if (savedPosts.length > 50) savedPosts.splice(50);
+      localStorage.setItem('mahwous_saved_posts', JSON.stringify(savedPosts));
+    } catch { /* ignore */ }
+
     setSaved(true);
     setTimeout(() => setSaved(false), 3000);
-    toast.success('تم حفظ المنشور في قائمة المحتوى');
+    toast.success('تم حفظ المنشور في قائمة المحتوى والمنشورات المحفوظة');
   };
 
   const handleDownloadAll = () => {
@@ -750,11 +832,12 @@ export default function HomePage() {
                 { key: 'images', label: 'الصور والكابشنات', desc: '3 صور + كابشن لكل منصة', icon: Image },
                 { key: 'videos', label: 'الفيديو', desc: 'عمودي + أفقي بصوت عربي', icon: Video },
                 { key: 'schedule', label: 'الجدولة والنشر', desc: 'جدولة ذكية + تاريخ النشر', icon: Calendar },
+                { key: 'saved', label: 'المنشورات المحفوظة', desc: 'أرشيف الحملات السابقة', icon: Archive },
                 { key: 'intelligence', label: 'مركز الذكاء', desc: 'تحليلات + تعلم ذاتي + منافسون', icon: Brain },
               ].map(({ key, label, desc, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as 'images' | 'videos' | 'schedule' | 'intelligence')}
+                  onClick={() => setActiveTab(key as 'images' | 'videos' | 'schedule' | 'saved' | 'intelligence')}
                   className={`flex-1 flex flex-col items-center justify-center gap-1 py-3 px-4 rounded-lg transition-all ${
                     activeTab === key
                       ? 'bg-[var(--gold)] text-black'
@@ -828,6 +911,11 @@ export default function HomePage() {
                 />
                 <PostHistory />
               </div>
+            )}
+
+            {/* ══════ Saved Posts Tab ══════ */}
+            {activeTab === 'saved' && (
+              <SavedPosts />
             )}
 
             {/* ══════ Intelligence Tab ══════ */}

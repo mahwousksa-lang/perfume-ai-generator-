@@ -4,7 +4,8 @@ import { useState, useEffect } from 'react';
 import {
   Loader2, Send, CheckCircle2, XCircle, Download,
   Smartphone, ShoppingBag, Ghost, Zap, Clock,
-  TrendingUp, Eye, MessageCircle, Sparkles,
+  Sparkles, AlertTriangle, ChevronDown, ChevronUp,
+  Eye, Copy, Check,
 } from 'lucide-react';
 import { toast } from 'sonner';
 
@@ -33,6 +34,7 @@ interface PublishResult {
   postId?: string;
   scheduledTime?: string;
   error?: string;
+  debug?: string;
 }
 
 // ── أسماء المنصات بالعربي ──────────────────────────────────────────────────
@@ -59,6 +61,12 @@ const PLATFORM_COLORS: Record<string, string> = {
   google_business: '#4285F4',
 };
 
+// ── أيقونات المنصات ──────────────────────────────────────────────────────────
+const PLATFORM_ICONS: Record<string, string> = {
+  instagram: '📸', facebook: '📘', twitter: '🐦', tiktok: '🎵',
+  linkedin: '💼', youtube: '▶️', pinterest: '📌', google_business: '🏢',
+};
+
 export default function SmartPublishButton({
   perfumeData,
   productUrl,
@@ -77,8 +85,12 @@ export default function SmartPublishButton({
   const [isConnected, setIsConnected] = useState(false);
   const [checkingConnection, setCheckingConnection] = useState(true);
   const [connectedNetworks, setConnectedNetworks] = useState<string[]>([]);
+  const [showDiagnostics, setShowDiagnostics] = useState(false);
+  const [diagnostics, setDiagnostics] = useState<string[]>([]);
+  const [showPreview, setShowPreview] = useState(false);
+  const [copiedPlatform, setCopiedPlatform] = useState<string | null>(null);
 
-  // ── التحقق من اتصال Metricool عبر API (server-side) ──────────────────
+  // ── التحقق من اتصال Metricool ──────────────────────────────────────────
   useEffect(() => {
     const checkConnection = async () => {
       setCheckingConnection(true);
@@ -86,9 +98,7 @@ export default function SmartPublishButton({
         const res = await fetch('/api/metricool/config');
         const data = await res.json();
         setIsConnected(data.connected === true);
-        if (data.connectedNetworks) {
-          setConnectedNetworks(data.connectedNetworks);
-        }
+        if (data.connectedNetworks) setConnectedNetworks(data.connectedNetworks);
       } catch {
         setIsConnected(false);
       } finally {
@@ -100,19 +110,33 @@ export default function SmartPublishButton({
 
   const togglePlatform = (platform: string) => {
     setSelectedPlatforms(prev =>
-      prev.includes(platform)
-        ? prev.filter(p => p !== platform)
-        : [...prev, platform]
+      prev.includes(platform) ? prev.filter(p => p !== platform) : [...prev, platform]
     );
   };
 
-  // ── النشر الذكي عبر Metricool — المحرك الوحيد ──────────────────────────
+  // ── معاينة المحتوى قبل النشر ──────────────────────────────────────────
+  const getPreviewCaption = (platform: string): string => {
+    if (!captions) return 'لا يوجد كابشن';
+    const key = platform === 'instagram' ? 'instagram_post'
+      : platform === 'facebook' ? 'facebook_post'
+      : captions[platform] ? platform : 'instagram_post';
+    return captions[key] || captions[platform] || captions.instagram_post || captions.instagram || 'لا يوجد كابشن';
+  };
+
+  const copyCaption = (platform: string) => {
+    const text = getPreviewCaption(platform);
+    navigator.clipboard.writeText(text);
+    setCopiedPlatform(platform);
+    setTimeout(() => setCopiedPlatform(null), 2000);
+    toast.success(`تم نسخ كابشن ${PLATFORM_NAMES[platform]}`);
+  };
+
+  // ── النشر الذكي عبر Metricool ──────────────────────────────────────────
   const handleSmartPublish = async () => {
     if (!isConnected) {
       toast.error('Metricool غير متصل — تأكد من إضافة METRICOOL_API_TOKEN في Vercel');
       return;
     }
-
     if (selectedPlatforms.length === 0) {
       toast.error('اختر منصة واحدة على الأقل');
       return;
@@ -121,9 +145,9 @@ export default function SmartPublishButton({
     setPublishing(true);
     setResults([]);
     setShowResults(false);
+    setDiagnostics([]);
 
     try {
-      // لا نرسل credentials — API يقرأها من البيئة (server-side)
       const response = await fetch('/api/metricool/smart-publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
@@ -147,30 +171,30 @@ export default function SmartPublishButton({
 
       const data = await response.json();
 
-      if (data.success) {
+      if (data.diagnostics) setDiagnostics(data.diagnostics);
+
+      if (data.results) {
         setResults(data.results);
         setShowResults(true);
-        toast.success(data.message);
+      }
 
-        // حفظ النتائج في localStorage للتعلم الذاتي
+      if (data.success) {
+        toast.success(data.message);
+        // حفظ سجل النشر
         try {
-          const publishLog = JSON.parse(localStorage.getItem('mahwous_publish_log') || '[]');
-          publishLog.push({
+          const log = JSON.parse(localStorage.getItem('mahwous_publish_log') || '[]');
+          log.push({
             timestamp: new Date().toISOString(),
             perfumeName: perfumeData.name,
             platforms: selectedPlatforms,
             results: data.results,
             mode: publishMode,
           });
-          if (publishLog.length > 100) publishLog.splice(0, publishLog.length - 100);
-          localStorage.setItem('mahwous_publish_log', JSON.stringify(publishLog));
-        } catch { /* ignore storage errors */ }
+          if (log.length > 100) log.splice(0, log.length - 100);
+          localStorage.setItem('mahwous_publish_log', JSON.stringify(log));
+        } catch { /* ignore */ }
       } else {
-        toast.error(data.error || 'فشل النشر — تحقق من إعدادات Metricool');
-        if (data.results) {
-          setResults(data.results);
-          setShowResults(true);
-        }
+        toast.error(data.error || 'فشل النشر — اضغط "تفاصيل الأخطاء" لمعرفة السبب');
       }
     } catch (error) {
       toast.error('خطأ في الاتصال بالخادم');
@@ -199,7 +223,6 @@ export default function SmartPublishButton({
       });
 
       const data = await response.json();
-
       if (data.success) {
         const blob = new Blob([data.textFileContent], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
@@ -210,7 +233,6 @@ export default function SmartPublishButton({
         a.click();
         document.body.removeChild(a);
         URL.revokeObjectURL(url);
-
         toast.success('تم تحميل ملف المحتوى للمنصات غير المؤتمتة');
       } else {
         toast.error('فشل توليد المحتوى');
@@ -225,6 +247,12 @@ export default function SmartPublishButton({
   const successCount = results.filter(r => r.success).length;
   const failCount = results.filter(r => !r.success).length;
 
+  // ── عدد الوسائط المتاحة ──────────────────────────────────────────────
+  const mediaCount = [
+    imageUrls?.story, imageUrls?.post, imageUrls?.landscape,
+    videoUrls?.vertical, videoUrls?.horizontal,
+  ].filter(Boolean).length;
+
   return (
     <div className="glass-card p-5 space-y-4">
       {/* ── العنوان ── */}
@@ -235,46 +263,116 @@ export default function SmartPublishButton({
         </div>
         {checkingConnection ? (
           <span className="text-[10px] px-2 py-1 rounded-full bg-gray-500/20 text-gray-400 font-medium flex items-center gap-1">
-            <Loader2 size={10} className="animate-spin" />
-            جاري التحقق...
+            <Loader2 size={10} className="animate-spin" /> جاري التحقق...
           </span>
         ) : isConnected ? (
           <span className="text-[10px] px-2 py-1 rounded-full bg-green-500/20 text-green-400 font-medium flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
-            متصل
+            <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" /> متصل
+            {connectedNetworks.length > 0 && ` (${connectedNetworks.length} منصة)`}
           </span>
         ) : (
           <span className="text-[10px] px-2 py-1 rounded-full bg-red-500/20 text-red-400 font-medium flex items-center gap-1">
-            <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
-            غير متصل
+            <div className="w-1.5 h-1.5 rounded-full bg-red-400" /> غير متصل
           </span>
         )}
       </div>
 
-      <p className="text-xs text-[var(--text-muted)] leading-relaxed">
-        انشر على جميع المنصات بضغطة واحدة — كل منصة تحصل على محتوى مخصص لها بالكابشن والهاشتاقات والوسائط المناسبة
-      </p>
+      {/* ── ملخص المحتوى الجاهز ── */}
+      <div className="p-3 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)]">
+        <p className="text-[11px] text-[var(--text-muted)] mb-2 font-medium">المحتوى الجاهز للنشر:</p>
+        <div className="flex flex-wrap gap-2">
+          {imageUrls?.story && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-purple-500/20 text-purple-400">📱 صورة ستوري</span>
+          )}
+          {imageUrls?.post && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-blue-500/20 text-blue-400">🖼️ صورة بوست</span>
+          )}
+          {imageUrls?.landscape && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-green-500/20 text-green-400">🌅 صورة أفقية</span>
+          )}
+          {videoUrls?.vertical && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-pink-500/20 text-pink-400">🎬 فيديو عمودي</span>
+          )}
+          {videoUrls?.horizontal && (
+            <span className="text-[10px] px-2 py-1 rounded-full bg-red-500/20 text-red-400">🎬 فيديو أفقي</span>
+          )}
+          <span className="text-[10px] px-2 py-1 rounded-full bg-[var(--gold)]/20 text-[var(--gold)]">
+            📝 {Object.keys(captions || {}).length} كابشن
+          </span>
+        </div>
+        {mediaCount === 0 && (
+          <p className="text-[10px] text-yellow-400 mt-2 flex items-center gap-1">
+            <AlertTriangle size={10} /> لا توجد وسائط — سيتم النشر بالنص فقط
+          </p>
+        )}
+      </div>
 
       {/* ── اختيار المنصات ── */}
       <div className="space-y-2">
-        <p className="text-[11px] text-[var(--text-muted)] font-medium">اختر المنصات للنشر:</p>
+        <div className="flex items-center justify-between">
+          <p className="text-[11px] text-[var(--text-muted)] font-medium">اختر المنصات للنشر:</p>
+          <button
+            onClick={() => {
+              const allPlatforms = Object.keys(PLATFORM_NAMES);
+              setSelectedPlatforms(prev => prev.length === allPlatforms.length ? [] : allPlatforms);
+            }}
+            className="text-[10px] text-[var(--gold)] hover:underline"
+          >
+            {selectedPlatforms.length === Object.keys(PLATFORM_NAMES).length ? 'إلغاء الكل' : 'تحديد الكل'}
+          </button>
+        </div>
         <div className="flex flex-wrap gap-1.5">
           {Object.entries(PLATFORM_NAMES).map(([id, name]) => (
             <button
               key={id}
               onClick={() => togglePlatform(id)}
-              className="text-[10px] px-3 py-1.5 rounded-full border transition-all font-medium"
+              className="text-[10px] px-3 py-1.5 rounded-full border transition-all font-medium flex items-center gap-1"
               style={{
                 borderColor: selectedPlatforms.includes(id) ? PLATFORM_COLORS[id] : 'var(--obsidian-border)',
                 backgroundColor: selectedPlatforms.includes(id) ? `${PLATFORM_COLORS[id]}20` : 'transparent',
                 color: selectedPlatforms.includes(id) ? PLATFORM_COLORS[id] : 'var(--text-muted)',
               }}
             >
+              <span>{PLATFORM_ICONS[id]}</span>
               {name}
             </button>
           ))}
         </div>
       </div>
+
+      {/* ── معاينة المحتوى ── */}
+      <button
+        onClick={() => setShowPreview(!showPreview)}
+        className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-[var(--obsidian-light)] border border-[var(--obsidian-border)] text-xs text-[var(--text-muted)] hover:text-[var(--gold)] hover:border-[var(--gold)] transition-all"
+      >
+        <Eye size={14} />
+        {showPreview ? 'إخفاء المعاينة' : 'معاينة المحتوى قبل النشر'}
+        {showPreview ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+      </button>
+
+      {showPreview && (
+        <div className="space-y-2 max-h-[400px] overflow-y-auto">
+          {selectedPlatforms.map(platform => (
+            <div key={platform} className="p-3 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)]">
+              <div className="flex items-center justify-between mb-2">
+                <span className="text-[11px] font-bold flex items-center gap-1" style={{ color: PLATFORM_COLORS[platform] }}>
+                  {PLATFORM_ICONS[platform]} {PLATFORM_NAMES[platform]}
+                </span>
+                <button
+                  onClick={() => copyCaption(platform)}
+                  className="text-[10px] text-[var(--text-muted)] hover:text-[var(--gold)] flex items-center gap-1"
+                >
+                  {copiedPlatform === platform ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+                  {copiedPlatform === platform ? 'تم النسخ' : 'نسخ'}
+                </button>
+              </div>
+              <p className="text-[10px] text-[var(--text-secondary)] leading-relaxed whitespace-pre-line line-clamp-4">
+                {getPreviewCaption(platform)}
+              </p>
+            </div>
+          ))}
+        </div>
+      )}
 
       {/* ── وضع النشر ── */}
       <div className="flex gap-2">
@@ -307,8 +405,8 @@ export default function SmartPublishButton({
       {/* ── زر النشر الرئيسي ── */}
       <button
         onClick={handleSmartPublish}
-        disabled={publishing || !isConnected || selectedPlatforms.length === 0 || checkingConnection}
-        className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
+        disabled={publishing || !isConnected || selectedPlatforms.length === 0}
+        className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl disabled:opacity-50"
         style={{
           background: isConnected && selectedPlatforms.length > 0
             ? 'linear-gradient(135deg, #D4AF37, #B8860B, #D4AF37)'
@@ -333,7 +431,7 @@ export default function SmartPublishButton({
       {!isConnected && !checkingConnection && (
         <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
           <p className="text-xs text-yellow-400 text-center leading-relaxed">
-            Metricool غير متصل — تأكد من إضافة <code className="bg-black/30 px-1.5 py-0.5 rounded text-[10px]">METRICOOL_API_TOKEN</code> في Vercel Environment Variables ثم أعد النشر (Redeploy)
+            Metricool غير متصل — تأكد من إضافة <code className="bg-black/30 px-1.5 py-0.5 rounded text-[10px]">METRICOOL_API_TOKEN</code> في Vercel ثم أعد النشر (Redeploy)
           </p>
         </div>
       )}
@@ -343,7 +441,7 @@ export default function SmartPublishButton({
         <div className="space-y-2 p-4 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)]">
           <div className="flex items-center justify-between mb-3">
             <h4 className="text-xs font-bold text-[var(--text-primary)]">نتائج النشر:</h4>
-            <div className="flex items-center gap-2 text-[10px]">
+            <div className="flex items-center gap-3 text-[10px]">
               {successCount > 0 && (
                 <span className="text-green-400 flex items-center gap-1">
                   <CheckCircle2 size={12} /> {successCount} نجح
@@ -358,18 +456,15 @@ export default function SmartPublishButton({
           </div>
 
           {results.map((result, i) => (
-            <div key={i} className="flex items-center justify-between text-xs py-2 px-3 rounded-lg bg-black/20 border border-[var(--obsidian-border)]/30">
+            <div key={i} className="flex items-center justify-between text-xs py-2.5 px-3 rounded-lg bg-black/20 border border-[var(--obsidian-border)]/30">
               <div className="flex items-center gap-2">
                 {result.success ? (
                   <CheckCircle2 size={14} className="text-green-400" />
                 ) : (
                   <XCircle size={14} className="text-red-400" />
                 )}
-                <span
-                  className="font-medium"
-                  style={{ color: PLATFORM_COLORS[result.platform.toLowerCase()] || 'var(--text-primary)' }}
-                >
-                  {PLATFORM_NAMES[result.platform.toLowerCase()] || result.platform}
+                <span className="font-medium" style={{ color: PLATFORM_COLORS[result.platform.toLowerCase()] || 'var(--text-primary)' }}>
+                  {PLATFORM_ICONS[result.platform.toLowerCase()] || ''} {PLATFORM_NAMES[result.platform.toLowerCase()] || result.platform}
                 </span>
               </div>
               <div className="flex items-center gap-2">
@@ -377,24 +472,60 @@ export default function SmartPublishButton({
                   <span className="text-[10px] text-[var(--text-muted)] flex items-center gap-1">
                     <Clock size={10} />
                     {new Date(result.scheduledTime).toLocaleString('ar-SA', {
-                      hour: '2-digit',
-                      minute: '2-digit',
-                      day: 'numeric',
-                      month: 'short',
+                      hour: '2-digit', minute: '2-digit', day: 'numeric', month: 'short',
                     })}
                   </span>
                 )}
                 <span className={`font-medium ${result.success ? 'text-green-400' : 'text-red-400'}`}>
-                  {result.success ? 'تم الجدولة' : 'فشل'}
+                  {result.success ? 'تم الجدولة ✓' : 'فشل ✗'}
                 </span>
               </div>
             </div>
           ))}
 
+          {/* تفاصيل الأخطاء */}
           {failCount > 0 && (
-            <p className="text-[10px] text-yellow-400 mt-2 text-center">
-              تحقق من ربط المنصات الفاشلة في حسابك على Metricool
-            </p>
+            <div className="mt-3">
+              <button
+                onClick={() => setShowDiagnostics(!showDiagnostics)}
+                className="w-full flex items-center justify-center gap-2 py-2 rounded-lg bg-red-500/10 border border-red-500/30 text-xs text-red-400 hover:bg-red-500/20 transition-all"
+              >
+                <AlertTriangle size={12} />
+                {showDiagnostics ? 'إخفاء تفاصيل الأخطاء' : 'عرض تفاصيل الأخطاء'}
+                {showDiagnostics ? <ChevronUp size={12} /> : <ChevronDown size={12} />}
+              </button>
+
+              {showDiagnostics && (
+                <div className="mt-2 space-y-2">
+                  {/* أخطاء كل منصة */}
+                  {results.filter(r => !r.success).map((result, i) => (
+                    <div key={i} className="p-2 rounded-lg bg-red-500/5 border border-red-500/20">
+                      <p className="text-[10px] font-bold text-red-400 mb-1">
+                        {PLATFORM_NAMES[result.platform.toLowerCase()] || result.platform}:
+                      </p>
+                      <p className="text-[9px] text-red-300 font-mono break-all">{result.error || 'خطأ غير معروف'}</p>
+                      {result.debug && (
+                        <p className="text-[9px] text-red-300/60 font-mono mt-1">{result.debug}</p>
+                      )}
+                    </div>
+                  ))}
+
+                  {/* تشخيص عام */}
+                  {diagnostics.length > 0 && (
+                    <div className="p-2 rounded-lg bg-gray-500/10 border border-gray-500/20">
+                      <p className="text-[10px] font-bold text-gray-400 mb-1">تشخيص النظام:</p>
+                      {diagnostics.map((d, i) => (
+                        <p key={i} className="text-[9px] text-gray-400 font-mono">{d}</p>
+                      ))}
+                    </div>
+                  )}
+
+                  <p className="text-[10px] text-yellow-400 text-center mt-2">
+                    تأكد من ربط المنصات في حسابك على <a href="https://app.metricool.com" target="_blank" rel="noopener noreferrer" className="underline">Metricool</a>
+                  </p>
+                </div>
+              )}
+            </div>
           )}
         </div>
       )}
@@ -404,7 +535,6 @@ export default function SmartPublishButton({
         <p className="text-xs text-[var(--text-muted)] mb-3 font-medium">
           المنصات بدون أتمتة — حمّل ملف المحتوى الجاهز:
         </p>
-
         <div className="grid grid-cols-3 gap-2 mb-3">
           <div className="flex flex-col items-center gap-1.5 p-2.5 rounded-lg bg-[var(--obsidian-light)] border border-[var(--obsidian-border)]">
             <Smartphone size={16} className="text-green-400" />
@@ -422,7 +552,6 @@ export default function SmartPublishButton({
             <span className="text-[8px] text-[var(--text-muted)]">صور + فيديو</span>
           </div>
         </div>
-
         <button
           onClick={handleGenerateOffline}
           disabled={generatingOffline}
