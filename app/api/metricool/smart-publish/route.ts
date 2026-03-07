@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // POST /api/metricool/smart-publish — النشر الذكي عبر Metricool API
-// V5: إصلاح مشكلة base64 — تحويل تلقائي إلى URLs عامة
+// V6: نشر كل الصور والفيديوهات على كل المنصات مع كابشنات مخصصة
 // ══════════════════════════════════════════════════════════════════════════════
 
 const METRICOOL_V2_BASE = 'https://app.metricool.com/api/v2';
@@ -143,11 +143,10 @@ async function uploadToCatbox(base64Data: string): Promise<string | null> {
 }
 
 async function convertBase64ToPublicUrl(base64: string): Promise<string> {
-  if (!isBase64(base64)) return base64; // Already a URL
+  if (!isBase64(base64)) return base64;
 
   console.log('[Smart Publish] Converting base64 to public URL...');
 
-  // Try providers in order
   const url1 = await uploadToImgbb(base64);
   if (url1) { console.log(`[Smart Publish] imgbb: ${url1}`); return url1; }
 
@@ -158,81 +157,232 @@ async function convertBase64ToPublicUrl(base64: string): Promise<string> {
   if (url3) { console.log(`[Smart Publish] catbox: ${url3}`); return url3; }
 
   console.error('[Smart Publish] All upload providers failed!');
-  return base64; // Return original as last resort
+  return base64;
 }
 
-// ── عبارات هوية مهووس ────────────────────────────────────────────────────────
-const MAHWOUS_SIGNATURES = [
-  '✨ مهووس ستور — نهتم بالتفاصيل',
-  '👑 مهووس ستور — ذوقك يستاهل الأفضل',
-  '🌹 مهووس ستور — عطرك يحكي قصتك',
-  '💎 مهووس ستور — الفخامة في كل قطرة',
-  '🔥 مهووس ستور — عطور تسحر الحواس',
+// ══════════════════════════════════════════════════════════════════════════════
+// خريطة النشر الذكية — كل منصة مع نوع المحتوى والكابشن المناسب
+// ══════════════════════════════════════════════════════════════════════════════
+
+interface PublishTarget {
+  platform: string;          // اسم المنصة في Metricool
+  captionKey: string;        // مفتاح الكابشن من captions
+  videoCaptionKey?: string;  // مفتاح كابشن الفيديو
+  mediaType: 'image' | 'video' | 'both';
+  imageFormat: 'story' | 'post' | 'landscape';
+  videoFormat?: 'vertical' | 'horizontal';
+  metricoolNetwork: string;  // اسم الشبكة في Metricool API
+  platformData?: Record<string, unknown>;
+  optimalHour: number;       // أفضل ساعة للنشر (توقيت السعودية)
+}
+
+// خريطة النشر الكاملة — 15 منصة × أنواع محتوى مختلفة
+const PUBLISH_TARGETS: PublishTarget[] = [
+  // ═══ صور عمودية (9:16) — Stories ═══
+  {
+    platform: 'Instagram Story',
+    captionKey: 'instagram_story',
+    mediaType: 'image',
+    imageFormat: 'story',
+    metricoolNetwork: 'instagram',
+    platformData: { instagramData: { autoPublish: true, type: 'STORY' } },
+    optimalHour: 21,
+  },
+  {
+    platform: 'Facebook Story',
+    captionKey: 'facebook_story',
+    mediaType: 'image',
+    imageFormat: 'story',
+    metricoolNetwork: 'facebook',
+    platformData: { facebookData: { type: 'STORY' } },
+    optimalHour: 19,
+  },
+  {
+    platform: 'TikTok Cover',
+    captionKey: 'tiktok',
+    mediaType: 'image',
+    imageFormat: 'story',
+    metricoolNetwork: 'tiktok',
+    platformData: { tiktokData: {} },
+    optimalHour: 22,
+  },
+
+  // ═══ صور مربعة (1:1) — Posts ═══
+  {
+    platform: 'Instagram Post',
+    captionKey: 'instagram_post',
+    mediaType: 'image',
+    imageFormat: 'post',
+    metricoolNetwork: 'instagram',
+    platformData: { instagramData: { autoPublish: true } },
+    optimalHour: 20,
+  },
+  {
+    platform: 'Facebook Post',
+    captionKey: 'facebook_post',
+    mediaType: 'image',
+    imageFormat: 'post',
+    metricoolNetwork: 'facebook',
+    platformData: { facebookData: { type: 'POST' } },
+    optimalHour: 18,
+  },
+
+  // ═══ صور أفقية (16:9) — Tweets & Covers ═══
+  {
+    platform: 'Twitter/X Tweet',
+    captionKey: 'twitter',
+    mediaType: 'image',
+    imageFormat: 'landscape',
+    metricoolNetwork: 'twitter',
+    optimalHour: 12,
+  },
+  {
+    platform: 'LinkedIn Post',
+    captionKey: 'linkedin',
+    mediaType: 'image',
+    imageFormat: 'landscape',
+    metricoolNetwork: 'linkedin',
+    platformData: { linkedinData: {} },
+    optimalHour: 8,
+  },
+  {
+    platform: 'Pinterest Pin',
+    captionKey: 'pinterest',
+    mediaType: 'image',
+    imageFormat: 'story',
+    metricoolNetwork: 'pinterest',
+    optimalHour: 21,
+  },
+  {
+    platform: 'Google Business',
+    captionKey: 'google_business',
+    mediaType: 'image',
+    imageFormat: 'post',
+    metricoolNetwork: 'google_business',
+    platformData: { gmbData: { topicType: 'STANDARD' } },
+    optimalHour: 10,
+  },
+
+  // ═══ فيديو عمودي (9:16) ═══
+  {
+    platform: 'Instagram Reels',
+    captionKey: 'instagram_reels',
+    videoCaptionKey: 'instagram_reels',
+    mediaType: 'video',
+    imageFormat: 'story',
+    videoFormat: 'vertical',
+    metricoolNetwork: 'instagram',
+    platformData: { instagramData: { autoPublish: true, type: 'REELS' } },
+    optimalHour: 21,
+  },
+  {
+    platform: 'TikTok Video',
+    captionKey: 'tiktok_video',
+    videoCaptionKey: 'tiktok_video',
+    mediaType: 'video',
+    imageFormat: 'story',
+    videoFormat: 'vertical',
+    metricoolNetwork: 'tiktok',
+    platformData: { tiktokData: {} },
+    optimalHour: 22,
+  },
+  {
+    platform: 'YouTube Shorts',
+    captionKey: 'youtube_shorts_video',
+    videoCaptionKey: 'youtube_shorts_video',
+    mediaType: 'video',
+    imageFormat: 'story',
+    videoFormat: 'vertical',
+    metricoolNetwork: 'youtube',
+    platformData: {
+      youtubeData: {
+        privacy: 'PUBLIC',
+        madeForKids: false,
+        type: 'SHORT',
+        category: '22',
+      },
+    },
+    optimalHour: 17,
+  },
+  {
+    platform: 'Facebook Reels',
+    captionKey: 'facebook_stories_video',
+    videoCaptionKey: 'facebook_stories_video',
+    mediaType: 'video',
+    imageFormat: 'story',
+    videoFormat: 'vertical',
+    metricoolNetwork: 'facebook',
+    platformData: { facebookData: { type: 'REEL' } },
+    optimalHour: 19,
+  },
+
+  // ═══ فيديو أفقي (16:9) ═══
+  {
+    platform: 'YouTube Video',
+    captionKey: 'youtube_video',
+    videoCaptionKey: 'youtube_video',
+    mediaType: 'video',
+    imageFormat: 'landscape',
+    videoFormat: 'horizontal',
+    metricoolNetwork: 'youtube',
+    platformData: {
+      youtubeData: {
+        privacy: 'PUBLIC',
+        madeForKids: false,
+        type: 'VIDEO',
+        category: '22',
+      },
+    },
+    optimalHour: 17,
+  },
+  {
+    platform: 'Twitter/X Video',
+    captionKey: 'twitter_video',
+    videoCaptionKey: 'twitter_video',
+    mediaType: 'video',
+    imageFormat: 'landscape',
+    videoFormat: 'horizontal',
+    metricoolNetwork: 'twitter',
+    optimalHour: 13,
+  },
+  {
+    platform: 'LinkedIn Video',
+    captionKey: 'linkedin_video',
+    videoCaptionKey: 'linkedin_video',
+    mediaType: 'video',
+    imageFormat: 'landscape',
+    videoFormat: 'horizontal',
+    metricoolNetwork: 'linkedin',
+    platformData: { linkedinData: {} },
+    optimalHour: 9,
+  },
+  {
+    platform: 'Facebook Video',
+    captionKey: 'facebook_video',
+    videoCaptionKey: 'facebook_video',
+    mediaType: 'video',
+    imageFormat: 'post',
+    videoFormat: 'horizontal',
+    metricoolNetwork: 'facebook',
+    platformData: { facebookData: { type: 'POST' } },
+    optimalHour: 19,
+  },
 ];
 
-function getRandomSignature(): string {
-  return MAHWOUS_SIGNATURES[Math.floor(Math.random() * MAHWOUS_SIGNATURES.length)];
-}
-
-// ── تنسيق المحتوى لكل منصة ──────────────────────────────────────────────────
-function formatForPlatform(
-  platform: string,
-  caption: string,
-  hashtags: string[],
-  productUrl: string,
-  perfumeName: string,
-  perfumeBrand: string
-): string {
-  const signature = getRandomSignature();
-  const hashtagStr = hashtags.join(' ');
-
-  switch (platform) {
-    case 'instagram':
-      return [caption, '', signature, '', '.', '.', '.', hashtagStr, '', '🔗 الرابط في البايو'].join('\n');
-    case 'facebook':
-      return [caption, '', `🛒 اطلبه الآن: ${productUrl}`, '', signature, '', hashtags.slice(0, 5).join(' ')].join('\n');
-    case 'twitter': {
-      const maxLen = 200 - productUrl.length - 10;
-      const tweetCaption = caption.length > maxLen ? caption.substring(0, maxLen - 3) + '...' : caption;
-      return [tweetCaption, '', productUrl, hashtags.slice(0, 3).join(' ')].join('\n');
-    }
-    case 'tiktok':
-      return [caption, '', hashtags.slice(0, 5).join(' '), '#fyp #viral #PerfumeTok #عطور_تيك_توك'].join('\n');
-    case 'linkedin':
-      return [caption, '', '---', `🔗 ${productUrl}`, '', signature, '', hashtags.slice(0, 5).join(' ')].join('\n');
-    case 'youtube':
-      return [caption, '', `🛒 اطلبه: ${productUrl}`, '', signature, '', hashtagStr].join('\n');
-    case 'pinterest':
-      return [caption, '', hashtagStr].join('\n');
-    case 'google_business':
-      return [caption, '', `🛒 ${productUrl}`, '', signature].join('\n');
-    default:
-      return `${caption}\n\n${signature}\n\n${hashtagStr}`;
-  }
-}
-
 // ── أوقات النشر المثالية — دائماً في المستقبل ────────────────────────────────
-function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>): {
+function getOptimalDateTime(hour: number, offsetMinutes: number = 0): {
   dateTime: string;
   timezone: string;
 } {
-  const defaults: Record<string, number> = {
-    instagram: 21, facebook: 19, twitter: 12, tiktok: 22,
-    linkedin: 8, youtube: 17, pinterest: 21, google_business: 10,
-  };
-
-  const hour = (bestTimes && bestTimes[platform])
-    ? parseInt(bestTimes[platform].split(':')[0], 10)
-    : (defaults[platform] || 20);
-
   const now = new Date();
   const saudiOffset = 3 * 60;
   const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
   const saudiNow = new Date(utcNow + (saudiOffset * 60000));
 
   const scheduled = new Date(saudiNow);
-  scheduled.setHours(hour, 0, 0, 0);
+  scheduled.setHours(hour, offsetMinutes, 0, 0);
 
+  // إذا الوقت فات، جدوله لبكرة
   if (scheduled.getTime() <= saudiNow.getTime()) {
     scheduled.setDate(scheduled.getDate() + 1);
   }
@@ -259,10 +409,7 @@ async function uploadMediaToMetricool(
   if (!mediaUrl) return '';
 
   try {
-    // Method 1: normalize/image/url
     const normalizeUrl = `${METRICOOL_V1_BASE}/actions/normalize/image/url?url=${encodeURIComponent(mediaUrl)}&blogId=${blogId}`;
-    console.log(`[Smart Publish] Normalizing media: ${mediaUrl.substring(0, 80)}...`);
-
     const res = await fetch(normalizeUrl, {
       headers: { 'X-Mc-Auth': token },
     });
@@ -270,60 +417,17 @@ async function uploadMediaToMetricool(
     if (res.ok) {
       const data = await res.json();
       const normalizedUrl = typeof data === 'string' ? data : (data.url || data.normalizedUrl || '');
-      if (normalizedUrl) {
-        console.log(`[Smart Publish] Media normalized: ${normalizedUrl.substring(0, 80)}...`);
-        return normalizedUrl;
-      }
+      if (normalizedUrl) return normalizedUrl;
     }
 
-    console.warn(`[Smart Publish] Normalize failed (${res.status}), using original URL`);
     return mediaUrl;
-  } catch (e) {
-    console.warn('[Smart Publish] Media upload error, using original URL:', e);
+  } catch {
     return mediaUrl;
-  }
-}
-
-// ── اختيار الوسائط المناسبة لكل منصة ────────────────────────────────────────
-function selectMediaForPlatform(
-  platform: string,
-  imageUrls: Record<string, string>,
-  videoUrls: Record<string, string>
-): { urls: string[]; isVideo: boolean } {
-  const videoFirst = ['tiktok', 'youtube', 'instagram'];
-
-  if (videoFirst.includes(platform)) {
-    if (platform === 'youtube' && videoUrls.horizontal) {
-      return { urls: [videoUrls.horizontal], isVideo: true };
-    }
-    if (videoUrls.vertical) {
-      return { urls: [videoUrls.vertical], isVideo: true };
-    }
-  }
-
-  switch (platform) {
-    case 'instagram':
-      return { urls: [imageUrls.story || imageUrls.post || ''].filter(Boolean), isVideo: false };
-    case 'tiktok':
-      return { urls: [imageUrls.story || imageUrls.post || ''].filter(Boolean), isVideo: false };
-    case 'youtube':
-      return { urls: [imageUrls.landscape || imageUrls.post || ''].filter(Boolean), isVideo: false };
-    case 'facebook':
-    case 'linkedin':
-      return { urls: [imageUrls.post || imageUrls.landscape || ''].filter(Boolean), isVideo: false };
-    case 'twitter':
-      return { urls: [imageUrls.post || imageUrls.landscape || ''].filter(Boolean), isVideo: false };
-    case 'pinterest':
-      return { urls: [imageUrls.story || imageUrls.post || ''].filter(Boolean), isVideo: false };
-    case 'google_business':
-      return { urls: [imageUrls.post || imageUrls.landscape || ''].filter(Boolean), isVideo: false };
-    default:
-      return { urls: [imageUrls.post || imageUrls.story || ''].filter(Boolean), isVideo: false };
   }
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// POST Handler — النشر الذكي V5 (مع تحويل base64 تلقائي)
+// POST Handler — النشر الذكي V6
 // ══════════════════════════════════════════════════════════════════════════════
 
 export async function POST(req: NextRequest) {
@@ -332,14 +436,23 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      perfumeName, perfumeBrand, productUrl,
-      captions, imageUrls, videoUrls, hashtags,
-      platforms, bestTimes, autoSchedule,
+      perfumeName,
+      perfumeBrand,
+      productUrl,
+      captions,          // كابشنات الصور (PlatformCaptions)
+      videoCaptions,     // كابشنات الفيديو
+      imageUrls,         // { story, post, landscape }
+      videoUrls,         // { vertical, horizontal }
+      hashtags,          // هاشتاقات لكل منصة
+      platforms,         // المنصات المطلوبة (اختياري — إذا فارغ ينشر على الكل)
+      bestTimes,         // أوقات مخصصة (اختياري)
+      publishImages,     // هل ينشر الصور (default: true)
+      publishVideos,     // هل ينشر الفيديوهات (default: true)
     } = body;
 
-    diagnostics.push('Request received');
+    diagnostics.push('Request received — Smart Publish V6');
 
-    // ── جلب Token من البيئة ──────────────────────────────────────────
+    // ── جلب Token ──
     const serverCreds = getServerCredentials();
 
     if (!serverCreds.token) {
@@ -351,198 +464,184 @@ export async function POST(req: NextRequest) {
 
     diagnostics.push(`Token found (length: ${serverCreds.token.length})`);
 
-    // ── جلب blogId تلقائياً ──────────────────────────────────────────
-    const { blogId, userId, connectedNetworks } = await ensureBlogId(
-      serverCreds.token, serverCreds.blogId
-    );
-
-    diagnostics.push(`blogId: ${blogId || 'NOT FOUND'}`);
+    // ── جلب blogId ──
+    const { blogId, userId } = await ensureBlogId(serverCreds.token, serverCreds.blogId);
 
     if (!blogId) {
       return NextResponse.json({
-        error: 'لم نتمكن من جلب blogId — تأكد من صحة Token أو أضف METRICOOL_BLOG_ID في Vercel',
+        error: 'لم نتمكن من جلب blogId — تأكد من صحة Token أو أضف METRICOOL_BLOG_ID',
         diagnostics,
       }, { status: 400 });
     }
 
     const finalUserId = serverCreds.userId || userId;
+    diagnostics.push(`blogId: ${blogId}`);
 
     // ══════════════════════════════════════════════════════════════════
-    // تحويل جميع صور base64 إلى URLs عامة قبل النشر
+    // تحويل جميع صور base64 إلى URLs عامة
     // ══════════════════════════════════════════════════════════════════
     const convertedImageUrls: Record<string, string> = {};
     if (imageUrls) {
-      diagnostics.push('Converting base64 images to public URLs...');
       for (const [key, url] of Object.entries(imageUrls)) {
         if (url && typeof url === 'string') {
           if (isBase64(url as string)) {
-            diagnostics.push(`  Converting image.${key} (base64 → public URL)...`);
             try {
               const publicUrl = await convertBase64ToPublicUrl(url as string);
               convertedImageUrls[key] = publicUrl;
-              if (!isBase64(publicUrl)) {
-                diagnostics.push(`  ✅ image.${key}: ${publicUrl.substring(0, 80)}`);
-              } else {
-                diagnostics.push(`  ❌ image.${key}: conversion failed, still base64`);
-              }
-            } catch (e) {
+              diagnostics.push(`image.${key}: ${isBase64(publicUrl) ? 'FAILED' : 'converted'}`);
+            } catch {
               convertedImageUrls[key] = url as string;
-              diagnostics.push(`  ❌ image.${key}: conversion error`);
             }
           } else {
             convertedImageUrls[key] = url as string;
-            diagnostics.push(`  ✓ image.${key}: already a URL`);
           }
         }
       }
     }
 
-    // المنصات المدعومة
-    const METRICOOL_PLATFORMS = ['instagram', 'facebook', 'twitter', 'tiktok', 'linkedin', 'youtube', 'pinterest', 'google_business'];
+    // ══════════════════════════════════════════════════════════════════
+    // تحديد المنصات المطلوبة
+    // ══════════════════════════════════════════════════════════════════
+    const METRICOOL_NETWORKS = ['instagram', 'facebook', 'twitter', 'tiktok', 'linkedin', 'youtube', 'pinterest', 'google_business'];
 
-    const targetPlatforms = (platforms || ['instagram', 'facebook', 'twitter', 'tiktok'])
-      .map((p: string) => p.toLowerCase())
-      .filter((p: string) => METRICOOL_PLATFORMS.includes(p));
+    const doPublishImages = publishImages !== false;
+    const doPublishVideos = publishVideos !== false;
 
-    if (targetPlatforms.length === 0) {
+    // فلترة الأهداف حسب الطلب
+    let targets = PUBLISH_TARGETS.filter(t => {
+      // فلترة حسب نوع المحتوى
+      if (t.mediaType === 'image' && !doPublishImages) return false;
+      if (t.mediaType === 'video' && !doPublishVideos) return false;
+
+      // فلترة حسب توفر الوسائط
+      if (t.mediaType === 'video') {
+        if (t.videoFormat === 'vertical' && !videoUrls?.vertical) return false;
+        if (t.videoFormat === 'horizontal' && !videoUrls?.horizontal) return false;
+      }
+
+      if (t.mediaType === 'image') {
+        if (!convertedImageUrls[t.imageFormat]) return false;
+      }
+
+      // فلترة حسب المنصات المطلوبة (إذا محددة)
+      if (platforms && Array.isArray(platforms) && platforms.length > 0) {
+        const requestedNetworks = platforms.map((p: string) => p.toLowerCase());
+        if (!requestedNetworks.includes(t.metricoolNetwork)) return false;
+      }
+
+      // فلترة حسب المنصات المدعومة في Metricool
+      if (!METRICOOL_NETWORKS.includes(t.metricoolNetwork)) return false;
+
+      return true;
+    });
+
+    diagnostics.push(`Total publish targets: ${targets.length}`);
+    diagnostics.push(`Images: ${doPublishImages ? 'YES' : 'NO'}, Videos: ${doPublishVideos ? 'YES' : 'NO'}`);
+
+    if (targets.length === 0) {
       return NextResponse.json({
-        error: 'لا توجد منصات مدعومة',
+        error: 'لا توجد أهداف نشر متاحة — تأكد من توفر الصور/الفيديوهات والمنصات',
         diagnostics,
       }, { status: 400 });
     }
 
-    diagnostics.push(`Target platforms: ${targetPlatforms.join(', ')}`);
-
+    // ══════════════════════════════════════════════════════════════════
+    // النشر على كل هدف
+    // ══════════════════════════════════════════════════════════════════
     const results: Array<{
       platform: string;
+      type: string;
       success: boolean;
       postId?: string;
       scheduledTime?: string;
       error?: string;
-      debug?: string;
     }> = [];
 
-    // ── جدولة منشور لكل منصة ──────────────────────────────────────────
-    for (const platform of targetPlatforms) {
+    // تتبع الفاصل الزمني لتجنب تكرار نفس الوقت لنفس المنصة
+    const platformTimeOffset: Record<string, number> = {};
+
+    for (const target of targets) {
       try {
-        // 1. اختيار الكابشن
-        const captionKey = platform === 'instagram' ? 'instagram_post'
-          : platform === 'facebook' ? 'facebook_post'
-          : platform === 'twitter' ? 'twitter'
-          : platform === 'tiktok' ? 'tiktok'
-          : platform === 'linkedin' ? 'linkedin'
-          : platform === 'youtube' ? 'youtube_thumbnail'
-          : platform === 'pinterest' ? 'pinterest'
-          : 'instagram_post';
+        // 1. اختيار الكابشن المناسب
+        const allCaptions = { ...captions, ...videoCaptions };
+        const rawCaption = allCaptions?.[target.captionKey]
+          || allCaptions?.[target.videoCaptionKey || '']
+          || captions?.instagram_post
+          || `عطر ${perfumeName} من ${perfumeBrand} — اكتشف الفخامة مع مهووس ستور`;
 
-        const rawCaption = captions?.[captionKey] || captions?.[platform] || captions?.instagram_post || captions?.instagram || `عطر ${perfumeName} من ${perfumeBrand} — اكتشف الفخامة مع مهووس ستور`;
+        // 2. اختيار الوسائط
+        let mediaUrl = '';
+        let isVideo = false;
 
-        const platformHashtags = hashtags || [
-          '#عطور', '#مهووس_ستور', '#عطور_أصلية', '#perfume', '#fragrance',
-          '#السعودية', '#luxury', '#عطر',
-        ];
+        if (target.mediaType === 'video') {
+          isVideo = true;
+          mediaUrl = target.videoFormat === 'vertical'
+            ? (videoUrls?.vertical || '')
+            : (videoUrls?.horizontal || '');
+        } else {
+          mediaUrl = convertedImageUrls[target.imageFormat] || '';
+        }
 
-        // 2. تنسيق النص
-        const formattedText = formatForPlatform(
-          platform, rawCaption, platformHashtags,
-          productUrl || '', perfumeName || '', perfumeBrand || ''
-        );
+        if (!mediaUrl) {
+          diagnostics.push(`${target.platform}: SKIP — no media available`);
+          continue;
+        }
 
-        // 3. اختيار وتحميل الوسائط (استخدام الصور المحوّلة)
-        const selectedMedia = selectMediaForPlatform(platform, convertedImageUrls, videoUrls || {});
-        const normalizedMedia: string[] = [];
-
-        for (const mediaUrl of selectedMedia.urls) {
-          if (mediaUrl && !isBase64(mediaUrl)) {
-            try {
-              const normalized = await uploadMediaToMetricool(mediaUrl, serverCreds.token, blogId);
-              if (normalized) {
-                normalizedMedia.push(normalized);
-              } else {
-                normalizedMedia.push(mediaUrl);
-              }
-            } catch (e) {
-              normalizedMedia.push(mediaUrl);
-            }
-          } else if (mediaUrl && isBase64(mediaUrl)) {
-            // Last attempt to convert base64
-            try {
-              const publicUrl = await convertBase64ToPublicUrl(mediaUrl);
-              if (!isBase64(publicUrl)) {
-                normalizedMedia.push(publicUrl);
-              }
-            } catch (e) {
-              diagnostics.push(`${platform}: failed to convert remaining base64 media`);
-            }
+        // 3. تحميل الوسائط إلى Metricool
+        let normalizedMedia = mediaUrl;
+        if (!isBase64(mediaUrl)) {
+          try {
+            normalizedMedia = await uploadMediaToMetricool(mediaUrl, serverCreds.token, blogId);
+          } catch {
+            normalizedMedia = mediaUrl;
           }
         }
 
-        diagnostics.push(`${platform}: media=${normalizedMedia.length}, isVideo=${selectedMedia.isVideo}`);
+        // 4. تحديد وقت النشر (فاصل 15 دقيقة بين منشورات نفس المنصة)
+        const offset = platformTimeOffset[target.metricoolNetwork] || 0;
+        platformTimeOffset[target.metricoolNetwork] = offset + 15;
 
-        // 4. تحديد وقت النشر
-        const { dateTime, timezone } = autoSchedule !== false
-          ? getOptimalDateTime(platform, bestTimes)
-          : getOptimalDateTime(platform);
+        const customHour = bestTimes?.[target.metricoolNetwork]
+          ? parseInt(bestTimes[target.metricoolNetwork].split(':')[0], 10)
+          : target.optimalHour;
+
+        const { dateTime, timezone } = getOptimalDateTime(customHour, offset);
 
         // 5. بناء payload
         const scheduledPost: Record<string, unknown> = {
           publicationDate: { dateTime, timezone },
-          text: formattedText,
-          providers: [{ network: platform }],
+          text: rawCaption,
+          providers: [{ network: target.metricoolNetwork }],
           autoPublish: true,
           saveExternalMediaFiles: true,
           shortener: false,
           draft: false,
+          media: [normalizedMedia],
+          ...(target.platformData || {}),
         };
 
-        if (normalizedMedia.length > 0) {
-          scheduledPost.media = normalizedMedia;
+        // إضافة عنوان يوتيوب
+        if (target.metricoolNetwork === 'youtube' && target.platformData?.youtubeData) {
+          const ytData = scheduledPost.youtubeData as Record<string, unknown>;
+          if (ytData) {
+            ytData.title = `${perfumeName} | ${perfumeBrand} | مهووس ستور`;
+            const hashtagArr = hashtags?.[target.metricoolNetwork] || hashtags?.youtube || [];
+            ytData.tags = (Array.isArray(hashtagArr) ? hashtagArr : []).map((h: string) => h.replace('#', '')).slice(0, 10);
+          }
         }
 
-        // ══════ بيانات خاصة بكل منصة ══════
-        if (platform === 'facebook') {
-          scheduledPost.facebookData = { type: 'POST' };
+        // Pinterest destination link
+        if (target.metricoolNetwork === 'pinterest' && target.platformData?.pinterestData) {
+          const pinData = scheduledPost.pinterestData as Record<string, unknown>;
+          if (pinData) {
+            pinData.destinationLink = productUrl || '';
+          }
         }
 
-        if (platform === 'instagram') {
-          scheduledPost.instagramData = { autoPublish: true };
-        }
-
-        if (platform === 'tiktok') {
-          scheduledPost.tiktokData = {};
-        }
-
-        if (platform === 'youtube') {
-          scheduledPost.youtubeData = {
-            title: `${perfumeName} | ${perfumeBrand} | مهووس ستور`,
-            privacy: 'PUBLIC',
-            madeForKids: false,
-            type: selectedMedia.isVideo ? 'VIDEO' : 'SHORT',
-            category: '22',
-            tags: platformHashtags.map((h: string) => h.replace('#', '')).slice(0, 10),
-          };
-        }
-
-        if (platform === 'linkedin') {
-          scheduledPost.linkedinData = {};
-        }
-
-        if (platform === 'pinterest') {
-          scheduledPost.pinterestData = {
-            destinationLink: productUrl || '',
-          };
-          scheduledPost.text = `${perfumeName} — ${perfumeBrand}\n\n${formattedText}`;
-        }
-
-        if (platform === 'google_business') {
-          scheduledPost.gmbData = { topicType: 'STANDARD' };
-        }
-
-        // 6. إرسال إلى Metricool V2 API
+        // 6. إرسال إلى Metricool
         const url = `${METRICOOL_V2_BASE}/scheduler/posts?blogId=${blogId}${finalUserId ? `&userId=${finalUserId}` : ''}`;
 
-        console.log(`[Smart Publish V5] ${platform} → POST ${url}`);
-        console.log(`[Smart Publish V5] ${platform} payload:`, JSON.stringify(scheduledPost).substring(0, 800));
+        console.log(`[Smart Publish V6] ${target.platform} → POST`);
 
         const response = await fetch(url, {
           method: 'POST',
@@ -554,32 +653,35 @@ export async function POST(req: NextRequest) {
         });
 
         const responseText = await response.text();
-        console.log(`[Smart Publish V5] ${platform} response: ${response.status} ${responseText.substring(0, 500)}`);
 
         if (response.ok) {
           let result;
           try { result = JSON.parse(responseText); } catch { result = {}; }
           results.push({
-            platform,
+            platform: target.platform,
+            type: target.mediaType,
             success: true,
             postId: result.id || result.postId || 'scheduled',
             scheduledTime: dateTime,
           });
+          diagnostics.push(`${target.platform}: scheduled at ${dateTime}`);
         } else {
           results.push({
-            platform,
+            platform: target.platform,
+            type: target.mediaType,
             success: false,
-            error: `HTTP ${response.status}: ${responseText.substring(0, 500)}`,
-            debug: `URL: ${url}`,
+            error: `HTTP ${response.status}: ${responseText.substring(0, 200)}`,
           });
+          diagnostics.push(`${target.platform}: FAILED — ${response.status}`);
         }
 
         // تأخير بين الطلبات
-        await new Promise(resolve => setTimeout(resolve, 500));
+        await new Promise(resolve => setTimeout(resolve, 300));
 
       } catch (platformError) {
         results.push({
-          platform,
+          platform: target.platform,
+          type: target.mediaType,
           success: false,
           error: platformError instanceof Error ? platformError.message : 'خطأ غير معروف',
         });
@@ -588,19 +690,25 @@ export async function POST(req: NextRequest) {
 
     const successCount = results.filter(r => r.success).length;
     const failCount = results.filter(r => !r.success).length;
+    const imageResults = results.filter(r => r.type === 'image');
+    const videoResults = results.filter(r => r.type === 'video');
 
     return NextResponse.json({
       success: successCount > 0,
       message: successCount > 0
         ? `تم جدولة ${successCount} منشور بنجاح${failCount > 0 ? ` (${failCount} فشل)` : ''}`
         : 'فشل النشر على جميع المنصات',
+      summary: {
+        totalScheduled: successCount,
+        totalFailed: failCount,
+        imagesScheduled: imageResults.filter(r => r.success).length,
+        videosScheduled: videoResults.filter(r => r.success).length,
+      },
       results,
       diagnostics,
-      totalScheduled: successCount,
-      totalFailed: failCount,
     });
   } catch (error) {
-    console.error('[Smart Publish V5] Server error:', error);
+    console.error('[Smart Publish V6] Server error:', error);
     return NextResponse.json({
       error: 'خطأ في الخادم',
       details: error instanceof Error ? error.message : 'Unknown',

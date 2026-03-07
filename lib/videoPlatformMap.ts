@@ -1,5 +1,5 @@
 // ============================================================
-// lib/videoPlatformMap.ts — Video Platform Distribution Map
+// lib/videoPlatformMap.ts — Video Platform Distribution Map v2
 // Maps 2 generated videos → 9 platform usages
 // ============================================================
 
@@ -41,7 +41,7 @@ export const VIDEO_PLATFORM_MAP: VideoPlatformUsage[] = [
     captionKey: 'snapchat_video',
   },
   {
-    id: 'youtube_shorts',
+    id: 'youtube_shorts_video',
     platform: 'YouTube',
     platformAr: 'يوتيوب',
     usage: 'Shorts',
@@ -49,7 +49,7 @@ export const VIDEO_PLATFORM_MAP: VideoPlatformUsage[] = [
     aspectRatio: '9:16',
     icon: 'youtube',
     color: '#FF0000',
-    captionKey: 'youtube_shorts',
+    captionKey: 'youtube_shorts_video',
   },
   {
     id: 'facebook_stories_video',

@@ -1,5 +1,6 @@
 // ============================================================
 // lib/types.ts — Core type definitions for the entire app
+// v3: مع تحليل العطر وكابشنات الفيديو المحسّنة
 // ============================================================
 
 export type Vibe =
@@ -75,26 +76,44 @@ export interface PlatformUsage {
 }
 
 export interface PlatformCaptions {
-  instagram_post: string;
+  // صور عمودية (9:16)
   instagram_story: string;
-  facebook_post: string;
-  facebook_story: string;
-  twitter: string;
-  linkedin: string;
   snapchat: string;
-  tiktok: string;
   pinterest: string;
+  facebook_story: string;
+  tiktok: string;
+  whatsapp: string;
+  youtube_shorts: string;
+
+  // صور مربعة (1:1)
+  instagram_post: string;
+  facebook_post: string;
   telegram: string;
   haraj: string;
   truth_social: string;
+
+  // صور أفقية (16:9)
+  twitter: string;
+  linkedin: string;
   youtube_thumbnail: string;
-  youtube_shorts: string;
-  whatsapp: string;
 }
 
 export interface DistributionResult {
   captions: PlatformCaptions;
+  videoCaptions?: VideoPlatformCaptions;
+  analysis?: PerfumeAnalysisResult;
   source: string;
+}
+
+// ── تحليل العطر والجمهور المستهدف ──────────────────────────────────────────
+
+export interface PerfumeAnalysisResult {
+  gender: string;
+  targetAudience: string;
+  occasion: string;
+  season: string;
+  personality: string;
+  ageRange: string;
 }
 
 // ── Scrape Types ────────────────────────────────────────────────────────────
@@ -120,6 +139,8 @@ export interface ScrapeResult {
 
 export interface CaptionResult {
   captions: PlatformCaptions | Record<string, string>;
+  videoCaptions?: VideoPlatformCaptions | Record<string, string>;
+  analysis?: PerfumeAnalysisResult;
   source?: string;
 }
 
@@ -192,13 +213,60 @@ export interface VideoPlatformUsage {
 }
 
 export interface VideoPlatformCaptions {
+  // فيديو عمودي (9:16)
   instagram_reels: string;
   tiktok_video: string;
   snapchat_video: string;
-  youtube_shorts: string;
+  youtube_shorts_video: string;
   facebook_stories_video: string;
+
+  // فيديو أفقي (16:9)
   youtube_video: string;
   twitter_video: string;
   linkedin_video: string;
   facebook_video: string;
+}
+
+// ── Smart Publish Types ─────────────────────────────────────────────────────
+
+export interface SmartPublishRequest {
+  perfumeName: string;
+  perfumeBrand: string;
+  productUrl: string;
+  captions: PlatformCaptions;
+  videoCaptions?: VideoPlatformCaptions;
+  imageUrls: {
+    story?: string;
+    post?: string;
+    landscape?: string;
+  };
+  videoUrls?: {
+    vertical?: string;
+    horizontal?: string;
+  };
+  hashtags?: Record<string, string[]>;
+  platforms?: string[];
+  bestTimes?: Record<string, string>;
+  publishImages?: boolean;
+  publishVideos?: boolean;
+}
+
+export interface SmartPublishResult {
+  success: boolean;
+  message: string;
+  summary: {
+    totalScheduled: number;
+    totalFailed: number;
+    imagesScheduled: number;
+    videosScheduled: number;
+  };
+  results: Array<{
+    platform: string;
+    type: string;
+    success: boolean;
+    postId?: string;
+    scheduledTime?: string;
+    error?: string;
+  }>;
+  diagnostics: string[];
 }
