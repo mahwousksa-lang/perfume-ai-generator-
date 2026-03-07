@@ -1,9 +1,9 @@
 'use client';
 
 // ============================================================
-// components/VideoDisplay.tsx
-// Displays generated videos distributed across platforms
-// with platform-specific captions below each video.
+// components/VideoDisplay.tsx — v2 (MAHWOUS CONTENT ENGINE)
+// Displays generated videos with per-video voiceover text,
+// scenario name, hook, and platform-specific captions.
 // ============================================================
 
 import { useState } from 'react';
@@ -16,6 +16,9 @@ import {
   Loader2,
   Video,
   AlertCircle,
+  Mic,
+  Zap,
+  BookOpen,
 } from 'lucide-react';
 import type { HedraVideoInfo, VideoAspectRatio, VideoPlatformCaptions } from '@/lib/types';
 import { VIDEO_PLATFORM_MAP, groupVideoByAspectRatio } from '@/lib/videoPlatformMap';
@@ -29,7 +32,7 @@ interface VideoDisplayProps {
   perfumeName?: string;
 }
 
-// ─── Platform Icons (reused from OutputGrid) ────────────────────────────────
+// ─── Platform Icons ────────────────────────────────────────────────────────
 
 function PlatformIcon({ icon, size = 16 }: { icon: string; size?: number }) {
   const icons: Record<string, JSX.Element> = {
@@ -118,6 +121,69 @@ function CaptionBlock({ caption }: { caption: string }) {
   );
 }
 
+// ─── Voiceover Card (per-video) ─────────────────────────────────────────────
+
+function VoiceoverCard({
+  video,
+  type,
+}: {
+  video: HedraVideoInfo;
+  type: 'vertical' | 'horizontal';
+}) {
+  const [copied, setCopied] = useState(false);
+  const text = video.voiceoverText || '';
+  if (!text) return null;
+
+  const handleCopy = () => {
+    navigator.clipboard.writeText(text).catch(() => {});
+    setCopied(true);
+    setTimeout(() => setCopied(false), 2000);
+  };
+
+  const isVertical = type === 'vertical';
+  const Icon = isVertical ? Zap : BookOpen;
+  const typeLabel = isVertical ? 'شبابي حماسي — تيك توك + ريلز' : 'ثقافي معلوماتي — يوتيوب';
+  const scenarioLabel = video.scenarioName || (isVertical ? 'سيناريو شبابي' : 'سيناريو ثقافي');
+
+  return (
+    <div className="glass-card p-4 space-y-3">
+      {/* Header */}
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-2">
+          <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${isVertical ? 'bg-purple-500/20 text-purple-400' : 'bg-blue-500/20 text-blue-400'}`}>
+            <Icon size={16} />
+          </div>
+          <div>
+            <p className="text-xs font-medium text-[var(--text-primary)]">{scenarioLabel}</p>
+            <p className="text-[10px] text-[var(--text-muted)]">{typeLabel}</p>
+          </div>
+        </div>
+        <button
+          onClick={handleCopy}
+          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-[var(--obsidian-border)] text-[var(--text-muted)] hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors"
+        >
+          {copied ? <Check size={10} /> : <Copy size={10} />}
+          {copied ? 'تم!' : 'نسخ النص'}
+        </button>
+      </div>
+
+      {/* Hook */}
+      {video.hook && (
+        <div className="flex items-center gap-2 px-3 py-2 bg-[var(--gold)]/10 rounded-lg border border-[var(--gold)]/20">
+          <Zap size={12} className="text-[var(--gold)] shrink-0" />
+          <p className="text-xs text-[var(--gold)] font-medium">الهوك: {video.hook}</p>
+        </div>
+      )}
+
+      {/* Voiceover Text */}
+      <div className="flex items-start gap-2">
+        <Mic size={14} className="text-[var(--text-muted)] shrink-0 mt-0.5" />
+        <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{text}</p>
+      </div>
+    </div>
+  );
+}
+
 // ─── Video Player Card ──────────────────────────────────────────────────────
 
 function VideoPlayerCard({
@@ -152,7 +218,7 @@ function VideoPlayerCard({
     );
   }
 
-  if (video.status === 'pending' || video.status === 'processing') {
+  if (video.status === 'pending' || video.status === 'processing' || video.status === 'queued' || video.status === 'finalizing') {
     return (
       <div className={`glass-card overflow-hidden ${isVertical ? 'max-w-[280px]' : 'max-w-[500px]'}`}>
         <div className="p-6 text-center space-y-4">
@@ -172,7 +238,9 @@ function VideoPlayerCard({
               />
             </div>
             <p className="text-[10px] text-[var(--text-muted)]">
-              {video.status === 'pending' ? 'في الانتظار...' : `جاري التوليد... ${video.progress || 0}%`}
+              {video.status === 'pending' || video.status === 'queued' ? 'في الانتظار...' :
+               video.status === 'finalizing' ? 'جاري التجهيز النهائي...' :
+               `جاري التوليد... ${video.progress || 0}%`}
               {video.eta_sec ? ` (${Math.ceil(video.eta_sec)}ث متبقية)` : ''}
             </p>
           </div>
@@ -236,7 +304,6 @@ export default function VideoDisplay({
 }: VideoDisplayProps) {
   const grouped = groupVideoByAspectRatio(VIDEO_PLATFORM_MAP);
   const captionsMap = (captions || {}) as Record<string, string>;
-  const [voiceCopied, setVoiceCopied] = useState(false);
 
   // Find video by aspect ratio
   const getVideo = (ar: VideoAspectRatio): HedraVideoInfo | undefined => {
@@ -246,17 +313,11 @@ export default function VideoDisplay({
   const verticalVideo = getVideo('9:16');
   const horizontalVideo = getVideo('16:9');
 
-  const handleCopyVoiceover = () => {
-    navigator.clipboard.writeText(voiceoverText).catch(() => {});
-    setVoiceCopied(true);
-    setTimeout(() => setVoiceCopied(false), 2000);
-  };
-
   const allComplete = videos.every(
     (v) => v.status === 'complete' || v.status === 'failed' || v.status === 'error'
   );
   const anyProcessing = videos.some(
-    (v) => v.status === 'pending' || v.status === 'processing'
+    (v) => v.status === 'pending' || v.status === 'processing' || v.status === 'queued' || v.status === 'finalizing'
   );
 
   return (
@@ -271,34 +332,38 @@ export default function VideoDisplay({
         </div>
       )}
 
-      {/* Voiceover Text */}
-      {voiceoverText && (
-        <div className="glass-card p-4 space-y-2">
-          <div className="flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <span className="text-lg">🎙️</span>
-              <span className="text-xs font-medium text-[var(--text-primary)]">نص التعليق الصوتي (عربي — صوت عمر)</span>
+      {/* Per-Video Voiceover Texts */}
+      {(verticalVideo?.voiceoverText || horizontalVideo?.voiceoverText) ? (
+        <div className="space-y-4">
+          <div className="flex items-center gap-3">
+            <div className="gold-divider flex-1" />
+            <div className="text-center px-4">
+              <p className="section-label mb-0 text-sm">نصوص التعليق الصوتي</p>
+              <p className="text-[10px] text-[var(--text-muted)]">نص مختلف لكل فيديو — لهجة سعودية</p>
             </div>
-            <button
-              onClick={handleCopyVoiceover}
-              className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-[var(--obsidian-border)] text-[var(--text-muted)] hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors"
-            >
-              {voiceCopied ? <Check size={10} /> : <Copy size={10} />}
-              {voiceCopied ? 'تم!' : 'نسخ'}
-            </button>
+            <div className="gold-divider flex-1" />
+          </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {verticalVideo && <VoiceoverCard video={verticalVideo} type="vertical" />}
+            {horizontalVideo && <VoiceoverCard video={horizontalVideo} type="horizontal" />}
+          </div>
+        </div>
+      ) : voiceoverText ? (
+        /* Fallback: single voiceover text (legacy) */
+        <div className="glass-card p-4 space-y-2">
+          <div className="flex items-center gap-2">
+            <Mic size={16} className="text-[var(--gold)]" />
+            <span className="text-xs font-medium text-[var(--text-primary)]">نص التعليق الصوتي</span>
           </div>
           <p className="text-sm text-[var(--text-secondary)] leading-relaxed">{voiceoverText}</p>
         </div>
-      )}
+      ) : null}
 
       {/* Videos Grid */}
       <div className="flex flex-col md:flex-row gap-6 justify-center items-start">
-        {/* Vertical Video */}
         {verticalVideo && (
           <VideoPlayerCard video={verticalVideo} perfumeName={perfumeName} />
         )}
-
-        {/* Horizontal Video */}
         {horizontalVideo && (
           <VideoPlayerCard video={horizontalVideo} perfumeName={perfumeName} />
         )}
@@ -314,7 +379,7 @@ export default function VideoDisplay({
                 <div className="gold-divider flex-1" />
                 <div className="text-center px-4">
                   <p className="section-label mb-0 text-sm">الفيديو العمودي — المنصات</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">9:16 — نفس الفيديو لجميع المنصات</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">9:16 — محتوى شبابي حماسي</p>
                 </div>
                 <div className="gold-divider flex-1" />
               </div>
@@ -328,7 +393,6 @@ export default function VideoDisplay({
                       className="glass-card overflow-hidden animate-fade-in-up"
                       style={{ animationDelay: `${i * 60}ms` }}
                     >
-                      {/* Platform Header */}
                       <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--obsidian-border)]">
                         <div
                           className="w-6 h-6 rounded-lg flex items-center justify-center"
@@ -349,8 +413,6 @@ export default function VideoDisplay({
                           {platform.usage}
                         </span>
                       </div>
-
-                      {/* Caption */}
                       {caption && (
                         <div className="px-2 pb-2">
                           <CaptionBlock caption={caption} />
@@ -370,7 +432,7 @@ export default function VideoDisplay({
                 <div className="gold-divider flex-1" />
                 <div className="text-center px-4">
                   <p className="section-label mb-0 text-sm">الفيديو الأفقي — المنصات</p>
-                  <p className="text-[10px] text-[var(--text-muted)]">16:9 — نفس الفيديو لجميع المنصات</p>
+                  <p className="text-[10px] text-[var(--text-muted)]">16:9 — محتوى ثقافي معلوماتي</p>
                 </div>
                 <div className="gold-divider flex-1" />
               </div>
@@ -384,7 +446,6 @@ export default function VideoDisplay({
                       className="glass-card overflow-hidden animate-fade-in-up"
                       style={{ animationDelay: `${i * 60}ms` }}
                     >
-                      {/* Platform Header */}
                       <div className="flex items-center gap-2 px-3 py-2 border-b border-[var(--obsidian-border)]">
                         <div
                           className="w-6 h-6 rounded-lg flex items-center justify-center"
@@ -405,8 +466,6 @@ export default function VideoDisplay({
                           {platform.usage}
                         </span>
                       </div>
-
-                      {/* Caption */}
                       {caption && (
                         <div className="px-2 pb-2">
                           <CaptionBlock caption={caption} />
@@ -423,7 +482,7 @@ export default function VideoDisplay({
 
       {/* Summary */}
       <p className="text-[10px] text-[var(--text-muted)] text-center">
-        2 فيديو مولَّد → {VIDEO_PLATFORM_MAP.length} استخدام عبر{' '}
+        2 فيديو مولَّد (محتوى مختلف) → {VIDEO_PLATFORM_MAP.length} استخدام عبر{' '}
         {new Set(VIDEO_PLATFORM_MAP.map((p) => p.platform)).size} منصة
       </p>
     </div>

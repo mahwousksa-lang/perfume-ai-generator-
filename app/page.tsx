@@ -179,9 +179,11 @@ export default function HomePage() {
       return;
     }
 
-    // Use the story image (9:16) as the reference for video generation
+    // Use the story image (9:16) for vertical, landscape (16:9) for horizontal
     const storyImage = generationResult.images.find((img) => img.format === 'story');
+    const landscapeImage = generationResult.images.find((img) => img.format === 'landscape');
     const imageUrl = storyImage?.url || generationResult.images[0]?.url;
+    const landscapeImageUrl = landscapeImage?.url || imageUrl;
 
     if (!imageUrl) {
       toast.error('لا توجد صورة مرجعية لتوليد الفيديو');
@@ -204,6 +206,7 @@ export default function HomePage() {
         body: JSON.stringify({
           perfumeData,
           imageUrl,
+          landscapeImageUrl,
           vibe: scrapeVibe,
         }),
       });
@@ -216,18 +219,24 @@ export default function HomePage() {
       const videoData = await videoRes.json();
       setVoiceoverText(videoData.voiceoverText || '');
 
-      // Update video infos with IDs from response
+      // Update video infos with IDs from response (now includes per-video voiceover)
       const newVideoInfos: HedraVideoInfo[] = videoData.videos.map((v: {
         id: string;
         aspectRatio: '9:16' | '16:9';
         status: string;
         error?: string;
+        voiceoverText?: string;
+        scenarioName?: string;
+        hook?: string;
       }) => ({
         id: v.id,
         aspectRatio: v.aspectRatio,
         status: v.status as HedraVideoInfo['status'],
         progress: 0,
         error: v.error,
+        voiceoverText: v.voiceoverText,
+        scenarioName: v.scenarioName,
+        hook: v.hook,
       }));
 
       setVideoInfos(newVideoInfos);

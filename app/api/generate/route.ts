@@ -17,6 +17,7 @@
 
 import { NextRequest, NextResponse } from 'next/server';
 import { buildFluxPrompt, buildNegativePrompt, buildGeminiEnhancePrompt } from '@/lib/promptEngine';
+import { buildPlatformSpecificPrompt } from '@/lib/mahwousImageEngine';
 import type { GenerationRequest } from '@/lib/types';
 
 export const maxDuration = 300;
@@ -262,14 +263,15 @@ async function generateFormat(
   let pipeline = 'none';
 
   // ══════════════════════════════════════════════════════════════════════════════
-  // PRIORITY 1: GEMINI (fast, understands bottle reference, Nano Banana style)
+  // PRIORITY 1: GEMINI with PLATFORM-SPECIFIC prompts (different scene per format)
   // ══════════════════════════════════════════════════════════════════════════════
   if (process.env.GOOGLE_GENERATIVE_AI_API_KEY) {
-    console.log(`[generate] Trying Gemini FIRST (${ac.format})`);
+    console.log(`[generate] Trying Gemini with platform-specific scene (${ac.format})`);
 
-    const geminiPrompt = buildGeminiEnhancePrompt({
+    // Use the new platform-specific prompt engine for varied scenes
+    const geminiPrompt = buildPlatformSpecificPrompt({
       perfumeData,
-      vibe,
+      format: ac.format,
       attire,
       aspectHint: ac.aspectHint,
       bottleDescription,

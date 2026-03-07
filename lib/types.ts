@@ -167,6 +167,9 @@ export interface HedraVideoInfo {
   progress?: number;
   eta_sec?: number;
   error?: string;
+  voiceoverText?: string;
+  scenarioName?: string;
+  hook?: string;
 }
 
 export interface VideoGenerationState {
