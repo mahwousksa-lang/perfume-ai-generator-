@@ -28,7 +28,7 @@ import { addToQueue, getQueue, downloadCSV, ALL_PLATFORMS, type QueuedPost } fro
 import MetricoolDashboard from '@/components/MetricoolDashboard';
 import SmartPublishButton from '@/components/SmartPublishButton';
 import { optimizeCaption } from '@/lib/selfLearningEngine';
-import { schedulePost, isMetricoolConfigured } from '@/lib/metricoolClient';
+import { schedulePost } from '@/lib/metricoolClient';
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -64,7 +64,16 @@ export default function HomePage() {
   const [metricoolConnected, setMetricoolConnected] = useState(false);
 
   useEffect(() => {
-    setMetricoolConnected(isMetricoolConfigured());
+    const checkMetricool = async () => {
+      try {
+        const res = await fetch('/api/metricool/config');
+        const data = await res.json();
+        setMetricoolConnected(data.connected === true);
+      } catch {
+        setMetricoolConnected(false);
+      }
+    };
+    checkMetricool();
   }, []);
 
   const handleBottleImageUpload = (e: React.ChangeEvent<HTMLInputElement>) => {

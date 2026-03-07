@@ -7,7 +7,6 @@ import {
   TrendingUp, Eye, MessageCircle, Sparkles,
 } from 'lucide-react';
 import { toast } from 'sonner';
-import { isMetricoolConfigured, getMetricoolCredentials } from '@/lib/metricoolClient';
 
 interface SmartPublishButtonProps {
   perfumeData: {
@@ -48,7 +47,7 @@ const PLATFORM_NAMES: Record<string, string> = {
   google_business: 'قوقل بزنس',
 };
 
-// ── أيقونات المنصات ──────────────────────────────────────────────────────────
+// ── ألوان المنصات ──────────────────────────────────────────────────────────
 const PLATFORM_COLORS: Record<string, string> = {
   instagram: '#E1306C',
   facebook: '#1877F2',
@@ -76,9 +75,27 @@ export default function SmartPublishButton({
   ]);
   const [publishMode, setPublishMode] = useState<'smart' | 'now'>('smart');
   const [isConnected, setIsConnected] = useState(false);
+  const [checkingConnection, setCheckingConnection] = useState(true);
+  const [connectedNetworks, setConnectedNetworks] = useState<string[]>([]);
 
+  // ── التحقق من اتصال Metricool عبر API (server-side) ──────────────────
   useEffect(() => {
-    setIsConnected(isMetricoolConfigured());
+    const checkConnection = async () => {
+      setCheckingConnection(true);
+      try {
+        const res = await fetch('/api/metricool/config');
+        const data = await res.json();
+        setIsConnected(data.connected === true);
+        if (data.connectedNetworks) {
+          setConnectedNetworks(data.connectedNetworks);
+        }
+      } catch {
+        setIsConnected(false);
+      } finally {
+        setCheckingConnection(false);
+      }
+    };
+    checkConnection();
   }, []);
 
   const togglePlatform = (platform: string) => {
@@ -92,7 +109,7 @@ export default function SmartPublishButton({
   // ── النشر الذكي عبر Metricool — المحرك الوحيد ──────────────────────────
   const handleSmartPublish = async () => {
     if (!isConnected) {
-      toast.error('اربط Metricool أولاً من تاب "مركز الذكاء"');
+      toast.error('Metricool غير متصل — تأكد من إضافة METRICOOL_API_TOKEN في Vercel');
       return;
     }
 
@@ -106,15 +123,11 @@ export default function SmartPublishButton({
     setShowResults(false);
 
     try {
-      const credentials = getMetricoolCredentials();
-
+      // لا نرسل credentials — API يقرأها من البيئة (server-side)
       const response = await fetch('/api/metricool/smart-publish', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          userToken: credentials.userToken,
-          blogId: credentials.blogId,
-          userId: credentials.userId,
           perfumeName: perfumeData.name,
           perfumeBrand: perfumeData.brand,
           productUrl,
@@ -149,7 +162,6 @@ export default function SmartPublishButton({
             results: data.results,
             mode: publishMode,
           });
-          // احتفظ بآخر 100 نشر فقط
           if (publishLog.length > 100) publishLog.splice(0, publishLog.length - 100);
           localStorage.setItem('mahwous_publish_log', JSON.stringify(publishLog));
         } catch { /* ignore storage errors */ }
@@ -189,7 +201,6 @@ export default function SmartPublishButton({
       const data = await response.json();
 
       if (data.success) {
-        // تحميل الملف النصي تلقائياً
         const blob = new Blob([data.textFileContent], { type: 'text/plain;charset=utf-8' });
         const url = URL.createObjectURL(blob);
         const a = document.createElement('a');
@@ -222,10 +233,20 @@ export default function SmartPublishButton({
           <Zap size={18} className="text-[var(--gold)]" />
           <h3 className="text-base font-bold text-[var(--gold)]">النشر الذكي عبر Metricool</h3>
         </div>
-        {isConnected && (
+        {checkingConnection ? (
+          <span className="text-[10px] px-2 py-1 rounded-full bg-gray-500/20 text-gray-400 font-medium flex items-center gap-1">
+            <Loader2 size={10} className="animate-spin" />
+            جاري التحقق...
+          </span>
+        ) : isConnected ? (
           <span className="text-[10px] px-2 py-1 rounded-full bg-green-500/20 text-green-400 font-medium flex items-center gap-1">
             <div className="w-1.5 h-1.5 rounded-full bg-green-400 animate-pulse" />
             متصل
+          </span>
+        ) : (
+          <span className="text-[10px] px-2 py-1 rounded-full bg-red-500/20 text-red-400 font-medium flex items-center gap-1">
+            <div className="w-1.5 h-1.5 rounded-full bg-red-400" />
+            غير متصل
           </span>
         )}
       </div>
@@ -286,7 +307,7 @@ export default function SmartPublishButton({
       {/* ── زر النشر الرئيسي ── */}
       <button
         onClick={handleSmartPublish}
-        disabled={publishing || !isConnected || selectedPlatforms.length === 0}
+        disabled={publishing || !isConnected || selectedPlatforms.length === 0 || checkingConnection}
         className="w-full py-4 rounded-xl font-bold text-sm flex items-center justify-center gap-2 transition-all shadow-lg hover:shadow-xl"
         style={{
           background: isConnected && selectedPlatforms.length > 0
@@ -309,10 +330,12 @@ export default function SmartPublishButton({
         )}
       </button>
 
-      {!isConnected && (
-        <p className="text-xs text-yellow-400 text-center">
-          اربط Metricool من تاب &quot;مركز الذكاء&quot; لتفعيل النشر التلقائي
-        </p>
+      {!isConnected && !checkingConnection && (
+        <div className="p-3 rounded-xl bg-yellow-500/10 border border-yellow-500/30">
+          <p className="text-xs text-yellow-400 text-center leading-relaxed">
+            Metricool غير متصل — تأكد من إضافة <code className="bg-black/30 px-1.5 py-0.5 rounded text-[10px]">METRICOOL_API_TOKEN</code> في Vercel Environment Variables ثم أعد النشر (Redeploy)
+          </p>
+        </div>
       )}
 
       {/* ── نتائج النشر ── */}

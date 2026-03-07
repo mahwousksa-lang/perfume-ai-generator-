@@ -8,12 +8,7 @@ import {
   Share2, Award, AlertCircle, CheckCircle2, Download,
 } from 'lucide-react';
 
-import {
-  isMetricoolConfigured,
-  getMetricoolCredentials,
-  setMetricoolCredentials,
-  type MetricoolCredentials,
-} from '@/lib/metricoolClient';
+import { type MetricoolCredentials } from '@/lib/metricoolClient';
 
 import {
   getLast30DaysSummary,
@@ -68,13 +63,25 @@ export default function MetricoolDashboard() {
   const [suggestions, setSuggestions] = useState<SmartSuggestion[]>([]);
   const [analyticsHistory, setAnalyticsHistory] = useState<any[]>([]);
 
-  // Initialize
+  // Initialize — check connection via API (server-side)
   useEffect(() => {
-    const configured = isMetricoolConfigured();
-    setIsConfigured(configured);
-    if (configured) {
-      setCredentials(getMetricoolCredentials());
-    }
+    const checkConnection = async () => {
+      try {
+        const res = await fetch('/api/metricool/config');
+        const data = await res.json();
+        setIsConfigured(data.connected === true);
+        if (data.connected) {
+          setCredentials({
+            userToken: '***server-side***',
+            blogId: data.blogId || '',
+            userId: data.userId || '',
+          });
+        }
+      } catch {
+        setIsConfigured(false);
+      }
+    };
+    checkConnection();
 
     // Load local data
     setCompetitors(getCompetitors());
@@ -87,16 +94,28 @@ export default function MetricoolDashboard() {
     setAnalyticsHistory(getAnalyticsHistory());
   }, []);
 
-  // Save credentials
-  const handleSaveCredentials = () => {
-    setMetricoolCredentials(credentials);
-    setIsConfigured(true);
+  // Save credentials (now just refreshes connection check)
+  const handleSaveCredentials = async () => {
+    try {
+      const res = await fetch('/api/metricool/config');
+      const data = await res.json();
+      setIsConfigured(data.connected === true);
+      if (data.connected) {
+        setCredentials({
+          userToken: '***server-side***',
+          blogId: data.blogId || '',
+          userId: data.userId || '',
+        });
+      }
+    } catch {
+      setIsConfigured(false);
+    }
     setShowSettings(false);
   };
 
   // Refresh analytics
   const handleRefreshAnalytics = useCallback(async () => {
-    if (!isMetricoolConfigured()) return;
+    if (!isConfigured) return;
     setLoading(true);
     try {
       const data = await getLast30DaysSummary();
@@ -184,43 +203,32 @@ export default function MetricoolDashboard() {
         {/* Settings Panel */}
         {showSettings && (
           <div className="mt-4 p-4 rounded-xl bg-[var(--obsidian-light)] border border-[var(--obsidian-border)] space-y-3">
-            <h4 className="text-sm font-bold text-[var(--gold)]">إعدادات Metricool API</h4>
-            <p className="text-xs text-[var(--text-muted)]">
-              أدخل بيانات حسابك من Metricool (خطة $67 تتيح API)
+            <h4 className="text-sm font-bold text-[var(--gold)]">حالة اتصال Metricool</h4>
+            <p className="text-xs text-[var(--text-muted)] leading-relaxed">
+              Token يُقرأ تلقائياً من Vercel Environment Variables — لا تحتاج إدخال شيء هنا.
+              تأكد من إضافة <code className="bg-black/30 px-1.5 py-0.5 rounded text-[10px]">METRICOOL_API_TOKEN</code> في Vercel.
             </p>
-            <div className="space-y-2">
-              <input
-                type="text"
-                className="luxury-input text-xs w-full"
-                placeholder="User Token (X-Mc-Auth)"
-                value={credentials.userToken}
-                onChange={(e) => setCredentials(prev => ({ ...prev, userToken: e.target.value }))}
-                dir="ltr"
-              />
-              <div className="grid grid-cols-2 gap-2">
-                <input
-                  type="text"
-                  className="luxury-input text-xs"
-                  placeholder="Blog ID"
-                  value={credentials.blogId}
-                  onChange={(e) => setCredentials(prev => ({ ...prev, blogId: e.target.value }))}
-                  dir="ltr"
-                />
-                <input
-                  type="text"
-                  className="luxury-input text-xs"
-                  placeholder="User ID"
-                  value={credentials.userId}
-                  onChange={(e) => setCredentials(prev => ({ ...prev, userId: e.target.value }))}
-                  dir="ltr"
-                />
+            {isConfigured && (
+              <div className="p-3 rounded-lg bg-green-500/10 border border-green-500/30 space-y-1">
+                <p className="text-xs text-green-400 font-medium">متصل بنجاح</p>
+                {credentials.blogId && (
+                  <p className="text-[10px] text-[var(--text-muted)]">Blog ID: {credentials.blogId}</p>
+                )}
+                {credentials.userId && (
+                  <p className="text-[10px] text-[var(--text-muted)]">User ID: {credentials.userId}</p>
+                )}
               </div>
-            </div>
+            )}
+            {!isConfigured && (
+              <div className="p-3 rounded-lg bg-red-500/10 border border-red-500/30">
+                <p className="text-xs text-red-400">غير متصل — أضف METRICOOL_API_TOKEN في Vercel ثم أعد النشر</p>
+              </div>
+            )}
             <button
               onClick={handleSaveCredentials}
               className="w-full py-2 rounded-lg bg-[var(--gold)] text-black text-xs font-bold hover:opacity-90 transition-opacity"
             >
-              حفظ وتفعيل
+              إعادة فحص الاتصال
             </button>
           </div>
         )}

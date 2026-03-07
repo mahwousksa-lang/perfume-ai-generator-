@@ -2,18 +2,44 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ── POST /api/metricool/publish ─────────────────────────────────────────────
 // Proxy to Metricool API for scheduling posts
-// This runs server-side to keep API tokens secure
+// يقرأ Token من متغيرات البيئة (server-side) — لا يحتاج المستخدم إدخال شيء
 
 const METRICOOL_BASE = 'https://app.metricool.com/api';
+
+async function getBlogId(token: string): Promise<string> {
+  try {
+    const res = await fetch(`${METRICOOL_BASE}/admin/simpleProfiles`, {
+      headers: { 'X-Mc-Auth': token },
+    });
+    if (res.ok) {
+      const profiles = await res.json();
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        return String(profiles[0].id || profiles[0].blogId || '');
+      }
+    }
+  } catch (e) {
+    console.error('[Publish] Failed to fetch blogId:', e);
+  }
+  return '';
+}
 
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { userToken, blogId, post } = body;
+    const { post } = body;
 
-    if (!userToken || !blogId) {
+    const token = process.env.METRICOOL_API_TOKEN;
+    if (!token) {
       return NextResponse.json(
-        { error: 'Missing Metricool credentials (userToken, blogId)' },
+        { error: 'METRICOOL_API_TOKEN غير موجود في متغيرات البيئة' },
+        { status: 400 }
+      );
+    }
+
+    const blogId = process.env.METRICOOL_BLOG_ID || await getBlogId(token);
+    if (!blogId) {
+      return NextResponse.json(
+        { error: 'لم نتمكن من جلب blogId' },
         { status: 400 }
       );
     }
@@ -25,15 +51,13 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    // Build Metricool schedule request
     const metricoolPayload = {
       blogId: parseInt(blogId),
-      providers: post.providers, // e.g., ['INSTAGRAM', 'FACEBOOK', 'TWITTER', 'TIKTOK']
+      providers: post.providers,
       text: post.text || '',
       date: post.date || new Date().toISOString(),
       mediaUrls: post.mediaUrls || [],
       autoPublish: post.autoPublish !== false,
-      // Platform-specific overrides
       ...(post.instagramOptions && { instagramOptions: post.instagramOptions }),
       ...(post.facebookOptions && { facebookOptions: post.facebookOptions }),
       ...(post.twitterOptions && { twitterOptions: post.twitterOptions }),
@@ -47,7 +71,7 @@ export async function POST(req: NextRequest) {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
-        'X-Mc-Auth': userToken,
+        'X-Mc-Auth': token,
       },
       body: JSON.stringify(metricoolPayload),
     });

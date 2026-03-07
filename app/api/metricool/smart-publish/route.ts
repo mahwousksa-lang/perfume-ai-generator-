@@ -2,12 +2,50 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // POST /api/metricool/smart-publish — النشر الذكي عبر Metricool V2 API
-// يولّد محتوى مخصص لكل منصة ثم يجدول عبر Metricool
-// هذا هو المحرك الوحيد للنشر — بدون Make.com
+// يقرأ Token من متغيرات البيئة (server-side) — لا يحتاج المستخدم إدخال شيء
 // ══════════════════════════════════════════════════════════════════════════════
 
 const METRICOOL_V2_BASE = 'https://app.metricool.com/api/v2';
 const METRICOOL_V1_BASE = 'https://app.metricool.com/api';
+
+// ── جلب بيانات Metricool من البيئة ──────────────────────────────────────────
+function getServerCredentials(): { token: string; blogId: string; userId: string } {
+  return {
+    token: process.env.METRICOOL_API_TOKEN || '',
+    blogId: process.env.METRICOOL_BLOG_ID || '',
+    userId: process.env.METRICOOL_USER_ID || '',
+  };
+}
+
+// ── جلب blogId تلقائياً إذا غير موجود ──────────────────────────────────────
+async function ensureBlogId(token: string, blogId: string): Promise<{ blogId: string; userId: string }> {
+  if (blogId) return { blogId, userId: '' };
+
+  try {
+    const res = await fetch(`${METRICOOL_V1_BASE}/admin/simpleProfiles`, {
+      headers: { 'X-Mc-Auth': token },
+    });
+    if (res.ok) {
+      const profiles = await res.json();
+      if (Array.isArray(profiles) && profiles.length > 0) {
+        return {
+          blogId: String(profiles[0].id || profiles[0].blogId || ''),
+          userId: String(profiles[0].userId || profiles[0].user_id || ''),
+        };
+      }
+      if (profiles && typeof profiles === 'object') {
+        return {
+          blogId: String(profiles.id || profiles.blogId || ''),
+          userId: String(profiles.userId || profiles.user_id || ''),
+        };
+      }
+    }
+  } catch (e) {
+    console.error('[Smart Publish] Failed to fetch blogId:', e);
+  }
+
+  return { blogId: '', userId: '' };
+}
 
 // ── عبارات هوية مهووس ────────────────────────────────────────────────────────
 const MAHWOUS_SIGNATURES = [
@@ -61,7 +99,6 @@ function formatForPlatform(
       ].join('\n');
 
     case 'twitter': {
-      // Twitter: 280 حرف كحد أقصى
       const maxLen = 200 - productUrl.length - 10;
       const tweetCaption = caption.length > maxLen
         ? caption.substring(0, maxLen - 3) + '...'
@@ -136,17 +173,16 @@ function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>
   timezone: string;
 } {
   const defaults: Record<string, number> = {
-    instagram: 21,   // 9 مساءً — ذروة التفاعل
-    facebook: 19,    // 7 مساءً
-    twitter: 12,     // 12 ظهراً
-    tiktok: 22,      // 10 مساءً
-    linkedin: 8,     // 8 صباحاً — وقت العمل
-    youtube: 17,     // 5 عصراً
-    pinterest: 21,   // 9 مساءً
-    google_business: 10, // 10 صباحاً
+    instagram: 21,
+    facebook: 19,
+    twitter: 12,
+    tiktok: 22,
+    linkedin: 8,
+    youtube: 17,
+    pinterest: 21,
+    google_business: 10,
   };
 
-  // Use learned best times if available
   if (bestTimes && bestTimes[platform]) {
     const [hours, minutes] = bestTimes[platform].split(':').map(Number);
     const now = new Date();
@@ -179,7 +215,7 @@ function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>
 // ── رفع الوسائط إلى Metricool ────────────────────────────────────────────────
 async function normalizeMedia(
   mediaUrl: string,
-  userToken: string,
+  token: string,
   blogId: string
 ): Promise<string> {
   if (!mediaUrl || mediaUrl.startsWith('data:')) return '';
@@ -188,7 +224,7 @@ async function normalizeMedia(
     const res = await fetch(
       `${METRICOOL_V1_BASE}/actions/normalize/image/url?url=${encodeURIComponent(mediaUrl)}&blogId=${blogId}`,
       {
-        headers: { 'X-Mc-Auth': userToken },
+        headers: { 'X-Mc-Auth': token },
       }
     );
     if (res.ok) {
@@ -209,32 +245,21 @@ function selectMediaForPlatform(
 ): string[] {
   switch (platform) {
     case 'instagram':
-      // Instagram: صورة ستوري أو بوست
       return [imageUrls.story || imageUrls.post || ''].filter(Boolean);
-
     case 'tiktok':
     case 'youtube':
-      // TikTok/YouTube: فيديو عمودي أولاً
       if (videoUrls.vertical) return [videoUrls.vertical];
       if (videoUrls.horizontal) return [videoUrls.horizontal];
       return [imageUrls.story || imageUrls.post || ''].filter(Boolean);
-
     case 'facebook':
     case 'linkedin':
-      // Facebook/LinkedIn: صورة بوست أو عرضية
       return [imageUrls.post || imageUrls.landscape || imageUrls.story || ''].filter(Boolean);
-
     case 'twitter':
-      // Twitter: صورة بوست
       return [imageUrls.post || imageUrls.landscape || ''].filter(Boolean);
-
     case 'pinterest':
-      // Pinterest: صورة عمودية عالية الجودة
       return [imageUrls.story || imageUrls.post || ''].filter(Boolean);
-
     case 'google_business':
       return [imageUrls.post || imageUrls.landscape || ''].filter(Boolean);
-
     default:
       return [imageUrls.post || imageUrls.story || ''].filter(Boolean);
   }
@@ -248,9 +273,6 @@ export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
     const {
-      userToken,
-      blogId,
-      userId,
       perfumeName,
       perfumeBrand,
       productUrl,
@@ -263,12 +285,30 @@ export async function POST(req: NextRequest) {
       autoSchedule,
     } = body;
 
-    if (!userToken || !blogId) {
+    // ── جلب Token من البيئة (server-side) ──────────────────────────────
+    const serverCreds = getServerCredentials();
+
+    if (!serverCreds.token) {
       return NextResponse.json(
-        { error: 'أدخل بيانات Metricool أولاً من تاب مركز الذكاء' },
+        { error: 'METRICOOL_API_TOKEN غير موجود — أضفه في Vercel Environment Variables' },
         { status: 400 }
       );
     }
+
+    // ── جلب blogId تلقائياً إذا غير موجود ──────────────────────────────
+    const { blogId, userId } = await ensureBlogId(
+      serverCreds.token,
+      serverCreds.blogId
+    );
+
+    if (!blogId) {
+      return NextResponse.json(
+        { error: 'لم نتمكن من جلب blogId — تأكد من صحة Token أو أضف METRICOOL_BLOG_ID في Vercel' },
+        { status: 400 }
+      );
+    }
+
+    const finalUserId = serverCreds.userId || userId;
 
     // المنصات المدعومة من Metricool
     const METRICOOL_PLATFORMS = ['instagram', 'facebook', 'twitter', 'tiktok', 'linkedin', 'youtube', 'pinterest', 'google_business'];
@@ -330,7 +370,7 @@ export async function POST(req: NextRequest) {
         const normalizedMedia: string[] = [];
         for (const mediaUrl of selectedMedia) {
           if (mediaUrl) {
-            const normalized = await normalizeMedia(mediaUrl, userToken, blogId);
+            const normalized = await normalizeMedia(mediaUrl, serverCreds.token, blogId);
             if (normalized) normalizedMedia.push(normalized);
           }
         }
@@ -353,7 +393,6 @@ export async function POST(req: NextRequest) {
           saveExternalMediaFiles: true,
           shortener: false,
           draft: false,
-          // بيانات خاصة بكل منصة
           ...(platform === 'facebook' && {
             facebookData: { type: 'POST' },
           }),
@@ -378,13 +417,13 @@ export async function POST(req: NextRequest) {
         };
 
         // 8. إرسال إلى Metricool V2 API
-        const url = `${METRICOOL_V2_BASE}/scheduler/posts?blogId=${blogId}${userId ? `&userId=${userId}` : ''}`;
+        const url = `${METRICOOL_V2_BASE}/scheduler/posts?blogId=${blogId}${finalUserId ? `&userId=${finalUserId}` : ''}`;
 
         const response = await fetch(url, {
           method: 'POST',
           headers: {
             'Content-Type': 'application/json',
-            'X-Mc-Auth': userToken,
+            'X-Mc-Auth': serverCreds.token,
           },
           body: JSON.stringify(scheduledPost),
         });
