@@ -20,6 +20,8 @@ import OutputGrid from '@/components/OutputGrid';
 import VideoDisplay from '@/components/VideoDisplay';
 import ContentActions from '@/components/ContentActions';
 import ContentQueuePanel from '@/components/ContentQueuePanel';
+import SmartSchedulePanel from '@/components/SmartSchedulePanel';
+import PostHistory from '@/components/PostHistory';
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -29,7 +31,7 @@ export default function HomePage() {
   const [generationResult, setGenerationResult] = useState<GenerationResult | null>(null);
   const [captionResult, setCaptionResult] = useState<CaptionResult | null>(null);
   const [scenarios, setScenarios] = useState<VideoScenario[] | null>(null);
-  const [activeTab, setActiveTab] = useState<'images' | 'videos'>('images');
+  const [activeTab, setActiveTab] = useState<'images' | 'videos' | 'schedule'>('images');
   const [loadingStatus, setLoadingStatus] = useState<string>('');
 
   // ── Video generation state ──────────────────────────────────────────────
@@ -596,12 +598,12 @@ export default function HomePage() {
               {[
                 '3 صور بأسلوب نانو بنانا',
                 '2 فيديو بتعليق صوتي عربي',
-                '15+ منصة سوشال ميديا',
-                'كابشن SEO لكل منصة',
-                'حفظ وجدولة المنشورات',
-                'تحميل الكل للنشر اليدوي',
+                '11 منصة سوشال ميديا',
+                'جدولة ذكية بأفضل الأوقات',
+                'نشر جماعي + مفرد',
+                'Story + Post + Reels لكل منصة',
+                'سجل منشورات محفوظ',
                 'تصدير CSV لـ Make.com',
-                'حراج + تلقرام + سناب',
               ].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
                   {f}
@@ -653,15 +655,16 @@ export default function HomePage() {
               </div>
             )}
 
-            {/* Tab Navigation — 2 tabs: الصور + الفيديو */}
+            {/* Tab Navigation — 3 tabs: الصور + الفيديو + الجدولة */}
             <div className="flex gap-1 p-1 bg-[var(--obsidian-light)] rounded-xl">
               {[
                 { key: 'images', label: 'الصور والكابشنات', icon: Image },
                 { key: 'videos', label: 'الفيديو', icon: Video },
+                { key: 'schedule', label: 'الجدولة والنشر', icon: Sparkles },
               ].map(({ key, label, icon: Icon }) => (
                 <button
                   key={key}
-                  onClick={() => setActiveTab(key as 'images' | 'videos')}
+                  onClick={() => setActiveTab(key as 'images' | 'videos' | 'schedule')}
                   className={`flex-1 flex items-center justify-center gap-2 py-2 px-4 rounded-lg text-sm font-medium transition-all ${
                     activeTab === key
                       ? 'bg-[var(--gold)] text-black'
@@ -676,6 +679,21 @@ export default function HomePage() {
                 </button>
               ))}
             </div>
+
+            {/* Schedule Tab */}
+            {activeTab === 'schedule' && perfumeData && (
+              <div className="space-y-6">
+                <SmartSchedulePanel
+                  perfumeData={perfumeData}
+                  productUrl={productUrl}
+                  images={generationResult.images}
+                  captions={captionResult?.captions || null}
+                  videoInfos={videoInfos}
+                  videoCaptions={videoCaptions}
+                />
+                <PostHistory />
+              </div>
+            )}
 
             {/* Images + Captions Tab */}
             {activeTab === 'images' && (
