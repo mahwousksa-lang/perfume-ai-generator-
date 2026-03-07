@@ -18,6 +18,8 @@ import type {
 
 import OutputGrid from '@/components/OutputGrid';
 import VideoDisplay from '@/components/VideoDisplay';
+import ContentActions from '@/components/ContentActions';
+import ContentQueuePanel from '@/components/ContentQueuePanel';
 
 // ─── Main App Component ───────────────────────────────────────────────────────
 export default function HomePage() {
@@ -595,9 +597,11 @@ export default function HomePage() {
                 '3 صور بأسلوب نانو بنانا',
                 '2 فيديو بتعليق صوتي عربي',
                 '15+ منصة سوشال ميديا',
-                'كابشن مخصص لكل منصة',
-                'صورة مرجعية للمنتج',
-                'حراج + تلقرام + تروث',
+                'كابشن SEO لكل منصة',
+                'حفظ وجدولة المنشورات',
+                'تحميل الكل للنشر اليدوي',
+                'تصدير CSV لـ Make.com',
+                'حراج + تلقرام + سناب',
               ].map((f) => (
                 <span key={f} className="px-3 py-1 rounded-full border border-[var(--obsidian-border)] bg-[var(--obsidian-light)]">
                   {f}
@@ -681,6 +685,21 @@ export default function HomePage() {
                 perfumeName={perfumeData?.name}
               />
             )}
+
+            {/* ── Content Actions — Save, Schedule, Download ── */}
+            {perfumeData && (
+              <ContentActions
+                perfumeData={perfumeData}
+                productUrl={productUrl}
+                images={generationResult.images}
+                captions={captionResult?.captions || null}
+                videoInfos={videoInfos}
+                videoCaptions={videoCaptions}
+              />
+            )}
+
+            {/* ── Content Queue Panel ── */}
+            <ContentQueuePanel />
 
             {/* Videos Tab */}
             {activeTab === 'videos' && (
