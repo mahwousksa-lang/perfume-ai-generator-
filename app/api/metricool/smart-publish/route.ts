@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 
 // ══════════════════════════════════════════════════════════════════════════════
 // POST /api/metricool/smart-publish — النشر الذكي عبر Metricool API
-// V3: تشخيص أخطاء مفصل + إصلاح صيغة الوسائط + دعم الفيديو
+// V4: إصلاح حقول API + التاريخ + الوسائط + تشخيص مفصل
 // ══════════════════════════════════════════════════════════════════════════════
 
 const METRICOOL_V2_BASE = 'https://app.metricool.com/api/v2';
@@ -28,8 +28,6 @@ async function ensureBlogId(token: string, blogId: string): Promise<{ blogId: st
 
     if (res.ok) {
       const profiles = await res.json();
-      console.log('[Smart Publish] simpleProfiles response:', JSON.stringify(profiles).substring(0, 500));
-
       if (Array.isArray(profiles) && profiles.length > 0) {
         const p = profiles[0];
         return {
@@ -45,9 +43,6 @@ async function ensureBlogId(token: string, blogId: string): Promise<{ blogId: st
           connectedNetworks: profiles.networks || profiles.connectedNetworks || [],
         };
       }
-    } else {
-      const errText = await res.text();
-      console.error('[Smart Publish] simpleProfiles failed:', res.status, errText);
     }
   } catch (e) {
     console.error('[Smart Publish] Failed to fetch blogId:', e);
@@ -96,9 +91,9 @@ function formatForPlatform(
     case 'linkedin':
       return [caption, '', '---', `🔗 ${productUrl}`, '', signature, '', hashtags.slice(0, 5).join(' ')].join('\n');
     case 'youtube':
-      return [`${perfumeName} | ${perfumeBrand} | مهووس ستور`, '', caption, '', `🛒 اطلبه: ${productUrl}`, '', signature, '', hashtagStr].join('\n');
+      return [caption, '', `🛒 اطلبه: ${productUrl}`, '', signature, '', hashtagStr].join('\n');
     case 'pinterest':
-      return [`${perfumeName} — ${perfumeBrand}`, '', caption, '', hashtagStr].join('\n');
+      return [caption, '', hashtagStr].join('\n');
     case 'google_business':
       return [caption, '', `🛒 ${productUrl}`, '', signature].join('\n');
     default:
@@ -106,7 +101,7 @@ function formatForPlatform(
   }
 }
 
-// ── أوقات النشر المثالية (توقيت السعودية) ────────────────────────────────────
+// ── أوقات النشر المثالية — دائماً في المستقبل ────────────────────────────────
 function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>): {
   dateTime: string;
   timezone: string;
@@ -120,13 +115,31 @@ function getOptimalDateTime(platform: string, bestTimes?: Record<string, string>
     ? parseInt(bestTimes[platform].split(':')[0], 10)
     : (defaults[platform] || 20);
 
+  // حساب الوقت بتوقيت السعودية (UTC+3)
   const now = new Date();
-  const scheduled = new Date(now);
+  const saudiOffset = 3 * 60; // +3 hours in minutes
+  const utcNow = now.getTime() + (now.getTimezoneOffset() * 60000);
+  const saudiNow = new Date(utcNow + (saudiOffset * 60000));
+
+  // إنشاء التاريخ المجدول بتوقيت السعودية
+  const scheduled = new Date(saudiNow);
   scheduled.setHours(hour, 0, 0, 0);
-  if (scheduled <= now) scheduled.setDate(scheduled.getDate() + 1);
+
+  // إذا كان الوقت في الماضي، أضف يوم
+  if (scheduled.getTime() <= saudiNow.getTime()) {
+    scheduled.setDate(scheduled.getDate() + 1);
+  }
+
+  // تنسيق التاريخ بدون timezone info
+  const year = scheduled.getFullYear();
+  const month = String(scheduled.getMonth() + 1).padStart(2, '0');
+  const day = String(scheduled.getDate()).padStart(2, '0');
+  const hours = String(scheduled.getHours()).padStart(2, '0');
+  const minutes = String(scheduled.getMinutes()).padStart(2, '0');
+  const seconds = String(scheduled.getSeconds()).padStart(2, '0');
 
   return {
-    dateTime: scheduled.toISOString().replace('Z', '').split('.')[0],
+    dateTime: `${year}-${month}-${day}T${hours}:${minutes}:${seconds}`,
     timezone: 'Asia/Riyadh',
   };
 }
@@ -158,7 +171,6 @@ async function uploadMediaToMetricool(
     }
 
     console.warn(`[Smart Publish] Normalize failed (${res.status}), using original URL`);
-    // Fallback: use original URL directly (Metricool may accept public URLs)
     return mediaUrl;
   } catch (e) {
     console.warn('[Smart Publish] Media upload error, using original URL:', e);
@@ -172,7 +184,6 @@ function selectMediaForPlatform(
   imageUrls: Record<string, string>,
   videoUrls: Record<string, string>
 ): { urls: string[]; isVideo: boolean } {
-  // المنصات التي تفضل الفيديو
   const videoFirst = ['tiktok', 'youtube', 'instagram'];
 
   if (videoFirst.includes(platform)) {
@@ -184,7 +195,6 @@ function selectMediaForPlatform(
     }
   }
 
-  // Fallback to images
   switch (platform) {
     case 'instagram':
       return { urls: [imageUrls.story || imageUrls.post || ''].filter(Boolean), isVideo: false };
@@ -207,7 +217,7 @@ function selectMediaForPlatform(
 }
 
 // ══════════════════════════════════════════════════════════════════════════════
-// POST Handler — النشر الذكي V3
+// POST Handler — النشر الذكي V4
 // ══════════════════════════════════════════════════════════════════════════════
 
 export async function POST(req: NextRequest) {
@@ -269,6 +279,23 @@ export async function POST(req: NextRequest) {
 
     diagnostics.push(`Target platforms: ${targetPlatforms.join(', ')}`);
 
+    // ── تشخيص الوسائط المرسلة ──────────────────────────────────────
+    diagnostics.push(`imageUrls received: ${JSON.stringify(imageUrls || {})}`.substring(0, 300));
+    diagnostics.push(`videoUrls received: ${JSON.stringify(videoUrls || {})}`.substring(0, 300));
+    const imgCount = imageUrls ? Object.values(imageUrls).filter(Boolean).length : 0;
+    const vidCount = videoUrls ? Object.values(videoUrls).filter(Boolean).length : 0;
+    diagnostics.push(`Total media: ${imgCount} images, ${vidCount} videos`);
+    if (imageUrls) {
+      Object.entries(imageUrls).forEach(([k, v]) => {
+        diagnostics.push(`  image.${k}: ${v ? String(v).substring(0, 80) : 'EMPTY'}`);
+      });
+    }
+    if (videoUrls) {
+      Object.entries(videoUrls).forEach(([k, v]) => {
+        diagnostics.push(`  video.${k}: ${v ? String(v).substring(0, 80) : 'EMPTY'}`);
+      });
+    }
+
     const results: Array<{
       platform: string;
       success: boolean;
@@ -310,19 +337,33 @@ export async function POST(req: NextRequest) {
 
         for (const mediaUrl of selectedMedia.urls) {
           if (mediaUrl) {
-            const normalized = await uploadMediaToMetricool(mediaUrl, serverCreds.token, blogId);
-            if (normalized) normalizedMedia.push(normalized);
+            try {
+              const normalized = await uploadMediaToMetricool(mediaUrl, serverCreds.token, blogId);
+              if (normalized) {
+                normalizedMedia.push(normalized);
+              } else {
+                // fallback: استخدم الرابط الأصلي
+                normalizedMedia.push(mediaUrl);
+                diagnostics.push(`${platform}: normalize returned empty, using original URL`);
+              }
+            } catch (e) {
+              // fallback: استخدم الرابط الأصلي
+              normalizedMedia.push(mediaUrl);
+              diagnostics.push(`${platform}: normalize error, using original URL`);
+            }
           }
         }
 
-        diagnostics.push(`${platform}: media=${normalizedMedia.length}, isVideo=${selectedMedia.isVideo}`);
+        diagnostics.push(`${platform}: media=${normalizedMedia.length}, isVideo=${selectedMedia.isVideo}, urls=${normalizedMedia.map(u => u.substring(0, 50)).join(', ')}`);
 
-        // 4. تحديد وقت النشر
+        // 4. تحديد وقت النشر — دائماً في المستقبل
         const { dateTime, timezone } = autoSchedule !== false
           ? getOptimalDateTime(platform, bestTimes)
-          : { dateTime: new Date(Date.now() + 2 * 60000).toISOString().replace('Z', '').split('.')[0], timezone: 'Asia/Riyadh' };
+          : getOptimalDateTime(platform); // حتى النشر الفوري يكون بعد 5 دقائق
 
-        // 5. بناء payload — V2 API
+        diagnostics.push(`${platform}: scheduledTime=${dateTime} ${timezone}`);
+
+        // 5. بناء payload — V2 API (حقول صحيحة فقط)
         const scheduledPost: Record<string, unknown> = {
           publicationDate: { dateTime, timezone },
           text: formattedText,
@@ -338,34 +379,47 @@ export async function POST(req: NextRequest) {
           scheduledPost.media = normalizedMedia;
         }
 
-        // بيانات خاصة بكل منصة
+        // ══════ بيانات خاصة بكل منصة — حقول صحيحة فقط ══════
         if (platform === 'facebook') {
           scheduledPost.facebookData = { type: 'POST' };
         }
+
         if (platform === 'instagram') {
+          // فقط autoPublish — بدون showReelsInFeed (حقل غير معروف)
           scheduledPost.instagramData = {
             autoPublish: true,
-            showReelsInFeed: true,
           };
         }
+
         if (platform === 'tiktok') {
           scheduledPost.tiktokData = {};
         }
+
         if (platform === 'youtube') {
+          // privacy بدلاً من privacyStatus
           scheduledPost.youtubeData = {
             title: `${perfumeName} | ${perfumeBrand} | مهووس ستور`,
-            privacyStatus: 'public',
+            privacy: 'PUBLIC',
+            madeForKids: false,
+            type: selectedMedia.isVideo ? 'VIDEO' : 'SHORT',
+            category: '22', // People & Blogs
+            tags: platformHashtags.map((h: string) => h.replace('#', '')).slice(0, 10),
           };
         }
+
         if (platform === 'linkedin') {
           scheduledPost.linkedinData = {};
         }
+
         if (platform === 'pinterest') {
+          // destinationLink فقط — بدون title (حقل غير معروف)
           scheduledPost.pinterestData = {
-            title: `${perfumeName} — ${perfumeBrand}`,
             destinationLink: productUrl || '',
           };
+          // Pinterest يحتاج title في النص الرئيسي
+          scheduledPost.text = `${perfumeName} — ${perfumeBrand}\n\n${formattedText}`;
         }
+
         if (platform === 'google_business') {
           scheduledPost.gmbData = {
             topicType: 'STANDARD',
@@ -375,8 +429,8 @@ export async function POST(req: NextRequest) {
         // 6. إرسال إلى Metricool V2 API
         const url = `${METRICOOL_V2_BASE}/scheduler/posts?blogId=${blogId}${finalUserId ? `&userId=${finalUserId}` : ''}`;
 
-        console.log(`[Smart Publish] ${platform} → POST ${url}`);
-        console.log(`[Smart Publish] ${platform} payload:`, JSON.stringify(scheduledPost).substring(0, 500));
+        console.log(`[Smart Publish V4] ${platform} → POST ${url}`);
+        console.log(`[Smart Publish V4] ${platform} payload:`, JSON.stringify(scheduledPost).substring(0, 800));
 
         const response = await fetch(url, {
           method: 'POST',
@@ -388,7 +442,7 @@ export async function POST(req: NextRequest) {
         });
 
         const responseText = await response.text();
-        console.log(`[Smart Publish] ${platform} response: ${response.status} ${responseText.substring(0, 300)}`);
+        console.log(`[Smart Publish V4] ${platform} response: ${response.status} ${responseText.substring(0, 500)}`);
 
         if (response.ok) {
           let result;
@@ -403,8 +457,8 @@ export async function POST(req: NextRequest) {
           results.push({
             platform,
             success: false,
-            error: `HTTP ${response.status}: ${responseText.substring(0, 300)}`,
-            debug: `URL: ${url.substring(0, 100)}`,
+            error: `HTTP ${response.status}: ${responseText.substring(0, 500)}`,
+            debug: `URL: ${url}`,
           });
         }
 
@@ -434,7 +488,7 @@ export async function POST(req: NextRequest) {
       totalFailed: failCount,
     });
   } catch (error) {
-    console.error('[Smart Publish] Server error:', error);
+    console.error('[Smart Publish V4] Server error:', error);
     return NextResponse.json({
       error: 'خطأ في الخادم',
       details: error instanceof Error ? error.message : 'Unknown',

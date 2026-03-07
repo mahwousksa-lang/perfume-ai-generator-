@@ -1,13 +1,12 @@
 'use client';
 
 // ============================================================
-// components/OutputGrid.tsx
-// Displays generated images distributed across all platforms
-// with platform-specific captions below each image.
+// components/OutputGrid.tsx — V2
+// عرض الصور المولّدة مع أزرار تحميل ونسخ واضحة لكل صورة وكابشن
 // ============================================================
 
 import { useState } from 'react';
-import { Download, Expand, Copy, Check, ChevronDown, ChevronUp } from 'lucide-react';
+import { Download, Expand, Copy, Check, ChevronDown, ChevronUp, FileText, Share2 } from 'lucide-react';
 import Image from 'next/image';
 import type { GeneratedImage, PlatformCaptions, SourceFormat } from '@/lib/types';
 import { PLATFORM_MAP, groupBySourceFormat } from '@/lib/platformMap';
@@ -87,7 +86,7 @@ function PlatformIcon({ icon, size = 16 }: { icon: string; size?: number }) {
   return icons[icon] || <span className="text-xs font-bold">{icon[0]?.toUpperCase()}</span>;
 }
 
-// ─── Caption Block ───────────────────────────────────────────────────────────
+// ─── Caption Block with Copy ────────────────────────────────────────────────
 
 function CaptionBlock({ caption }: { caption: string }) {
   const [copied, setCopied] = useState(false);
@@ -111,10 +110,10 @@ function CaptionBlock({ caption }: { caption: string }) {
         <span className="text-[10px] text-[var(--text-muted)] font-mono">{safeCaption.length} حرف</span>
         <button
           onClick={handleCopy}
-          className="flex items-center gap-1 text-[10px] px-2 py-1 rounded-lg border border-[var(--obsidian-border)] text-[var(--text-muted)] hover:border-[var(--gold)] hover:text-[var(--gold)] transition-colors"
+          className="flex items-center gap-1 text-[10px] px-2.5 py-1.5 rounded-lg border border-[var(--gold)]/30 text-[var(--gold)] hover:bg-[var(--gold)]/10 transition-all font-medium"
         >
-          {copied ? <Check size={10} /> : <Copy size={10} />}
-          {copied ? 'تم!' : 'نسخ'}
+          {copied ? <Check size={10} className="text-green-400" /> : <Copy size={10} />}
+          {copied ? 'تم النسخ!' : 'نسخ الكابشن'}
         </button>
       </div>
       <p className={`caption-text text-xs whitespace-pre-wrap leading-relaxed ${!expanded && isLong ? 'line-clamp-4' : ''}`}>
@@ -159,6 +158,35 @@ function safeDownload(url: string, filename: string): void {
   document.body.removeChild(a);
 }
 
+// ─── Download All Captions as Text ──────────────────────────────────────────
+
+function downloadAllCaptions(captions: Record<string, string>, perfumeName: string) {
+  const lines: string[] = [];
+  lines.push('═══════════════════════════════════════════════════');
+  lines.push(`  مهووس ستور — كابشنات ${perfumeName}`);
+  lines.push(`  ${new Date().toLocaleDateString('ar-SA')}`);
+  lines.push('═══════════════════════════════════════════════════');
+  lines.push('');
+
+  Object.entries(captions).forEach(([key, value]) => {
+    if (value && value !== '—') {
+      lines.push(`── ${key} ──`);
+      lines.push(value);
+      lines.push('');
+    }
+  });
+
+  const blob = new Blob([lines.join('\n')], { type: 'text/plain;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `mahwous-captions-${perfumeName.replace(/\s+/g, '-').substring(0, 20)}.txt`;
+  document.body.appendChild(a);
+  a.click();
+  document.body.removeChild(a);
+  URL.revokeObjectURL(url);
+}
+
 // ─── Format Labels ───────────────────────────────────────────────────────────
 
 const FORMAT_LABELS: Record<SourceFormat, { title: string; subtitle: string; aspect: string }> = {
@@ -184,6 +212,29 @@ export default function OutputGrid({ images, captions, perfumeName = 'perfume' }
 
   return (
     <div className="space-y-10 animate-fade-in-up">
+      {/* ── أزرار سريعة في الأعلى ── */}
+      <div className="flex flex-wrap items-center justify-center gap-2">
+        <button
+          onClick={() => images.forEach(img => {
+            if (img.url) safeDownload(img.url, `mahwous-${safeName}-${img.format}.jpg`);
+          })}
+          className="btn-gold flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold"
+        >
+          <Download size={14} />
+          تحميل جميع الصور ({images.filter(i => i.url).length})
+        </button>
+
+        {Object.keys(captionsMap).length > 0 && (
+          <button
+            onClick={() => downloadAllCaptions(captionsMap, perfumeName)}
+            className="btn-ghost flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs font-bold border border-[var(--obsidian-border)] hover:border-[var(--gold)]"
+          >
+            <FileText size={14} />
+            تحميل جميع الكابشنات
+          </button>
+        )}
+      </div>
+
       {formatOrder.map(format => {
         const imageUrl = getImageUrl(format);
         const platforms = grouped[format];
@@ -200,6 +251,17 @@ export default function OutputGrid({ images, captions, perfumeName = 'perfume' }
                 <p className="text-[10px] text-[var(--text-muted)]">{formatInfo.subtitle}</p>
               </div>
               <div className="gold-divider flex-1" />
+            </div>
+
+            {/* ── زر تحميل الصورة الأصلية ── */}
+            <div className="flex justify-center">
+              <button
+                onClick={() => safeDownload(imageUrl, `mahwous-${safeName}-${format}-original.jpg`)}
+                className="flex items-center gap-2 px-5 py-2 rounded-xl text-xs font-bold bg-[var(--gold)]/10 text-[var(--gold)] border border-[var(--gold)]/30 hover:bg-[var(--gold)]/20 transition-all"
+              >
+                <Download size={14} />
+                تحميل الصورة الأصلية ({formatInfo.title})
+              </button>
             </div>
 
             {/* Platform Cards Grid */}
@@ -246,23 +308,47 @@ export default function OutputGrid({ images, captions, perfumeName = 'perfume' }
                         sizes="(max-width: 768px) 100vw, 33vw"
                         unoptimized
                       />
-                      {/* Hover overlay */}
+                      {/* Hover overlay with buttons */}
                       <div className="overlay gap-2">
                         <button
                           onClick={() => window.open(imageUrl, '_blank', 'noopener,noreferrer')}
-                          className="btn-ghost flex items-center gap-1 text-[10px] px-2 py-1.5"
+                          className="btn-ghost flex items-center gap-1 text-[10px] px-3 py-2 rounded-lg"
                         >
-                          <Expand size={10} />
+                          <Expand size={12} />
                           عرض
                         </button>
                         <button
                           onClick={() => safeDownload(imageUrl, filename)}
-                          className="btn-gold flex items-center gap-1 text-[10px] px-2 py-1.5 rounded-lg"
+                          className="btn-gold flex items-center gap-1 text-[10px] px-3 py-2 rounded-lg font-bold"
                         >
-                          <Download size={10} />
+                          <Download size={12} />
                           تحميل
                         </button>
                       </div>
+                    </div>
+
+                    {/* ── أزرار سريعة تحت الصورة ── */}
+                    <div className="flex items-center gap-1 px-2 py-1.5 border-b border-[var(--obsidian-border)]">
+                      <button
+                        onClick={() => safeDownload(imageUrl, filename)}
+                        className="flex-1 flex items-center justify-center gap-1 text-[9px] py-1.5 rounded-lg text-[var(--gold)] hover:bg-[var(--gold)]/10 transition-all font-medium"
+                      >
+                        <Download size={10} />
+                        تحميل الصورة
+                      </button>
+                      {platform.hasCaption && caption && caption !== '—' && (
+                        <button
+                          onClick={() => {
+                            if (typeof navigator !== 'undefined' && navigator.clipboard) {
+                              navigator.clipboard.writeText(caption);
+                            }
+                          }}
+                          className="flex-1 flex items-center justify-center gap-1 text-[9px] py-1.5 rounded-lg text-blue-400 hover:bg-blue-400/10 transition-all font-medium"
+                        >
+                          <Copy size={10} />
+                          نسخ الكابشن
+                        </button>
+                      )}
                     </div>
 
                     {/* Caption */}
