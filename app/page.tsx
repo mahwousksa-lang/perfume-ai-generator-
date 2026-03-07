@@ -778,7 +778,7 @@ export default function HomePage() {
                       <input
                         type="url"
                         className="luxury-input text-xs flex-1"
-                        placeholder="https://hook.us2.make.com/..."
+                        placeholder="https://hook.eu2.make.com/..."
                         value={webhookUrl}
                         onChange={(e) => setWebhookUrlState(e.target.value)}
                         dir="ltr"

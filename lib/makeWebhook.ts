@@ -7,12 +7,13 @@
 import { QueuedPost } from './contentQueue';
 
 // ── Webhook URL ─────────────────────────────────────────────
-// يتم تخزينه في localStorage حتى يضيفه المستخدم مرة واحدة
+// الرابط الافتراضي مُعدّ مسبقاً — يمكن تغييره من الإعدادات
 const WEBHOOK_URL_KEY = 'mahwous_make_webhook_url';
+const DEFAULT_WEBHOOK_URL = 'https://hook.eu2.make.com/kam6szq27bvdtcyux5wqqlek5a743etq';
 
 export function getWebhookUrl(): string {
-  if (typeof window === 'undefined') return '';
-  return localStorage.getItem(WEBHOOK_URL_KEY) || '';
+  if (typeof window === 'undefined') return DEFAULT_WEBHOOK_URL;
+  return localStorage.getItem(WEBHOOK_URL_KEY) || DEFAULT_WEBHOOK_URL;
 }
 
 export function setWebhookUrl(url: string): void {
